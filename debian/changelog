@@ -1,3 +1,9 @@
+eina (0.0.1-20090103-4+b1) asimov; urgency=low
+
+ * Rebuild with new toolchain.
+
+ -- Alexander Kerner <lunohod@openinkpot.org>  Fri, 03 Apr 2009 14:42:19 +0200
+
 eina (0.0.1-20090103-4) asimov; urgency=low
 
   * Added cdbs-embedded to the XCS-Cross-Host-Build-Depends
