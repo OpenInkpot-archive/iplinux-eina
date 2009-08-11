@@ -34,6 +34,11 @@
 /*============================================================================*
  *                                  Local                                     *
  *============================================================================*/
+
+/**
+ * @cond LOCAL
+ */
+
 static Eina_Hash *_backends;
 static Eina_Array *_modules;
 static int _init_count = 0;
@@ -43,7 +48,7 @@ _new_from_buffer(const char *name, const char *context, const char *options, va_
 {
 	Eina_Mempool_Backend *be;
 	Eina_Mempool *mp;
-	
+
 	Eina_Error err = EINA_ERROR_NOT_MEMPOOL_MODULE;
 
 	eina_error_set(0);
@@ -92,9 +97,14 @@ Eina_Bool fixed_bitmap_init(void);
 void fixed_bitmap_shutdown(void);
 #endif
 
+/**
+ * @endcond
+ */
+
 /*============================================================================*
  *                                 Global                                     *
  *============================================================================*/
+
 EAPI Eina_Bool eina_mempool_register(Eina_Mempool_Backend *be)
 {
 	return eina_hash_add(_backends, be->name, be);
@@ -104,15 +114,21 @@ EAPI void eina_mempool_unregister(Eina_Mempool_Backend *be)
 {
 	eina_hash_del(_backends, be->name, be);
 }
+
 /*============================================================================*
  *                                   API                                      *
  *============================================================================*/
 
+/**
+ * @addtogroup Eina_Memory_Pool_Group Memory Pool
+ *
+ * @brief These functions provide memory pool management.
+ *
+ * @{
+ */
+
 EAPI Eina_Error EINA_ERROR_NOT_MEMPOOL_MODULE = 0;
 
-/**
- *
- */
 EAPI int
 eina_mempool_init(void)
 {
@@ -120,8 +136,16 @@ eina_mempool_init(void)
 	{
 		char *path;
 
-		eina_hash_init();
-		eina_module_init();
+		if (!eina_hash_init())
+		  {
+		     fprintf(stderr, "Could not initialize eina hash module.\n");
+		     return 0;
+		  }
+		if (!eina_module_init())
+		  {
+		     fprintf(stderr, "Could not initialize eina module module.\n");
+		     goto module_init_error;
+		  }
 
 		EINA_ERROR_NOT_MEMPOOL_MODULE = eina_error_msg_register("Not a memory pool module.");
 		_backends = eina_hash_string_superfast_new(NULL);
@@ -144,7 +168,8 @@ eina_mempool_init(void)
 		if (!_modules)
 		{
 			EINA_ERROR_PERR("ERROR: no mempool modules able to be loaded.\n");
-			abort();
+			eina_hash_free(_backends);
+			goto mempool_init_error;
 		}
 		eina_module_list_load(_modules);
 		/* builtin backends */
@@ -162,11 +187,16 @@ eina_mempool_init(void)
 #endif
 	}
 	return ++_init_count;
+
+	mempool_init_error:
+	   eina_module_shutdown();
+	module_init_error:
+	   eina_hash_shutdown();
+
+	return 0;
+
 }
 
-/**
- *
- */
 EAPI int
 eina_mempool_shutdown(void)
 {
@@ -187,18 +217,21 @@ eina_mempool_shutdown(void)
 	ememoa_fixed_shutdown();
 #endif
 	/* dynamic backends */
-	eina_module_list_unload(_modules);
+	eina_module_list_flush(_modules);
+	if (_modules)
+	   eina_array_free(_modules);
+
 	eina_module_shutdown();
-	/* TODO delete the _modules list */
+
+	if (_backends)
+	   eina_hash_free(_backends);
+
 	eina_hash_shutdown();
 	return 0;
 }
 
-/**
- * 
- */
 EAPI Eina_Mempool *
-eina_mempool_new(const char *name, const char *context, const char *options, ...)
+eina_mempool_add(const char *name, const char *context, const char *options, ...)
 {
 	Eina_Mempool *mp;
 	va_list args;
@@ -212,10 +245,7 @@ eina_mempool_new(const char *name, const char *context, const char *options, ...
 	return mp;
 }
 
-/**
- * 
- */
-EAPI void eina_mempool_delete(Eina_Mempool *mp)
+EAPI void eina_mempool_del(Eina_Mempool *mp)
 {
         EINA_SAFETY_ON_NULL_RETURN(mp);
 	EINA_SAFETY_ON_NULL_RETURN(mp->backend.shutdown);
@@ -236,3 +266,7 @@ EAPI void eina_mempool_statistics(Eina_Mempool *mp)
         EINA_SAFETY_ON_NULL_RETURN(mp->backend.statistics);
 	mp->backend.statistics(mp->backend_data);
 }
+
+/**
+ * @}
+ */

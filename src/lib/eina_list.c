@@ -72,6 +72,7 @@
 # include <Evil.h>
 #endif
 
+#include "eina_config.h"
 #include "eina_error.h"
 #include "eina_list.h"
 #include "eina_mempool.h"
@@ -87,28 +88,40 @@
  * @cond LOCAL
  */
 
-#define EINA_MAGIC_CHECK_LIST(d)				\
+#define EINA_MAGIC_CHECK_LIST(d, ...)				\
   do {								\
     if (!EINA_MAGIC_CHECK(d, EINA_MAGIC_LIST))			\
-      EINA_MAGIC_FAIL(d, EINA_MAGIC_LIST);			\
+    {								\
+        EINA_MAGIC_FAIL(d, EINA_MAGIC_LIST);			\
+        return __VA_ARGS__;					\
+    }								\
   } while(0);
 
-#define EINA_MAGIC_CHECK_LIST_ITERATOR(d)			\
+#define EINA_MAGIC_CHECK_LIST_ITERATOR(d, ...)			\
   do {								\
     if (!EINA_MAGIC_CHECK(d, EINA_MAGIC_LIST_ITERATOR))		\
-      EINA_MAGIC_FAIL(d, EINA_MAGIC_LIST_ITERATOR);		\
+    {								\
+        EINA_MAGIC_FAIL(d, EINA_MAGIC_LIST_ITERATOR);		\
+        return __VA_ARGS__;					\
+    }								\
   } while(0);
 
-#define EINA_MAGIC_CHECK_LIST_ACCESSOR(d)			\
+#define EINA_MAGIC_CHECK_LIST_ACCESSOR(d, ...)			\
   do {								\
     if (!EINA_MAGIC_CHECK(d, EINA_MAGIC_LIST_ACCESSOR))		\
-      EINA_MAGIC_FAIL(d, EINA_MAGIC_LIST_ACCESSOR);		\
+    {								\
+        EINA_MAGIC_FAIL(d, EINA_MAGIC_LIST_ACCESSOR);		\
+        return __VA_ARGS__;					\
+    }								\
   } while(0);
 
 #define EINA_MAGIC_CHECK_LIST_ACCOUNTING(d)			\
   do {								\
     if (!EINA_MAGIC_CHECK(d, EINA_MAGIC_LIST_ACCOUNTING))	\
-      EINA_MAGIC_FAIL(d, EINA_MAGIC_LIST_ACCOUNTING);		\
+    {								\
+        EINA_MAGIC_FAIL(d, EINA_MAGIC_LIST_ACCOUNTING);		\
+        return;							\
+    }								\
   } while(0);
 
 #define EINA_LIST_SORT_STACK_SIZE 32
@@ -123,7 +136,7 @@ struct _Eina_Iterator_List
    const Eina_List *head;
    const Eina_List *current;
 
-   EINA_MAGIC;
+   EINA_MAGIC
 };
 
 struct _Eina_Accessor_List
@@ -135,7 +148,7 @@ struct _Eina_Accessor_List
 
    unsigned int index;
 
-   EINA_MAGIC;
+   EINA_MAGIC
 };
 
 static int _eina_list_init_count = 0;
@@ -147,7 +160,7 @@ _eina_list_mempool_accounting_new(__UNUSED__ Eina_List *list)
 {
    Eina_List_Accounting *tmp;
 
-   tmp = eina_mempool_alloc(_eina_list_accounting_mp, sizeof (Eina_List_Accounting));
+   tmp = eina_mempool_malloc(_eina_list_accounting_mp, sizeof (Eina_List_Accounting));
    if (!tmp) return NULL;
 
    EINA_MAGIC_SET(tmp, EINA_MAGIC_LIST_ACCOUNTING);
@@ -168,7 +181,7 @@ _eina_list_mempool_list_new(__UNUSED__ Eina_List *list)
 {
    Eina_List *tmp;
 
-   tmp = eina_mempool_alloc(_eina_list_mp, sizeof (Eina_List));
+   tmp = eina_mempool_malloc(_eina_list_mp, sizeof (Eina_List));
    if (!tmp) return NULL;
 
    EINA_MAGIC_SET(tmp, EINA_MAGIC_LIST);
@@ -191,7 +204,7 @@ _eina_list_mempool_list_free(Eina_List *list)
 static Eina_List *
 _eina_list_setup_accounting(Eina_List *list)
 {
-   EINA_MAGIC_CHECK_LIST(list);
+   EINA_MAGIC_CHECK_LIST(list, NULL);
 
    list->accounting = _eina_list_mempool_accounting_new(list);
    if (!list->accounting) goto on_error;
@@ -234,7 +247,7 @@ static Eina_Mempool2 _eina_list_accounting_mempool =
 static Eina_Bool
 eina_list_iterator_next(Eina_Iterator_List *it, void **data)
 {
-   EINA_MAGIC_CHECK_LIST_ITERATOR(it);
+   EINA_MAGIC_CHECK_LIST_ITERATOR(it, EINA_FALSE);
 
    if (it->current == NULL) return EINA_FALSE;
    if (data) *data = eina_list_data_get(it->current);
@@ -244,10 +257,23 @@ eina_list_iterator_next(Eina_Iterator_List *it, void **data)
    return EINA_TRUE;
 }
 
+static Eina_Bool
+eina_list_iterator_prev(Eina_Iterator_List *it, void **data)
+{
+   EINA_MAGIC_CHECK_LIST_ITERATOR(it, EINA_FALSE);
+
+   if (it->current == NULL) return EINA_FALSE;
+   if (data) *data = eina_list_data_get(it->current);
+
+   it->current = eina_list_prev(it->current);
+
+   return EINA_TRUE;
+}
+
 static Eina_List *
 eina_list_iterator_get_container(Eina_Iterator_List *it)
 {
-   EINA_MAGIC_CHECK_LIST_ITERATOR(it);
+   EINA_MAGIC_CHECK_LIST_ITERATOR(it, NULL);
 
    return (Eina_List *) it->head;
 }
@@ -267,7 +293,7 @@ eina_list_accessor_get_at(Eina_Accessor_List *it, unsigned int index, void **dat
    unsigned int middle;
    unsigned int i;
 
-   EINA_MAGIC_CHECK_LIST_ACCESSOR(it);
+   EINA_MAGIC_CHECK_LIST_ACCESSOR(it, EINA_FALSE);
 
    if (index > eina_list_count(it->head)) return EINA_FALSE;
 
@@ -332,7 +358,7 @@ eina_list_accessor_get_at(Eina_Accessor_List *it, unsigned int index, void **dat
 static Eina_List *
 eina_list_accessor_get_container(Eina_Accessor_List *it)
 {
-   EINA_MAGIC_CHECK_LIST_ACCESSOR(it);
+   EINA_MAGIC_CHECK_LIST_ACCESSOR(it, NULL);
 
    return (Eina_List *) it->head;
 }
@@ -350,7 +376,7 @@ eina_list_sort_rebuild_prev(Eina_List *list)
 {
    Eina_List *prev = NULL;
 
-   EINA_MAGIC_CHECK_LIST(list);
+   EINA_MAGIC_CHECK_LIST(list, NULL);
 
    for (; list; list = list->next)
      {
@@ -397,7 +423,7 @@ eina_list_sort_merge(Eina_List *a, Eina_List *b, Eina_Compare_Cb func)
 /**
  * @addtogroup Eina_List_Group List
  *
- * @brief These functions provide single linked list management.
+ * @brief These functions provide double linked list management.
  *
  * For more information, you can look at the @ref tutorial_list_page.
  *
@@ -409,21 +435,50 @@ eina_list_sort_merge(Eina_List *a, Eina_List *b, Eina_Compare_Cb func)
  *
  * @return 1 or greater on success, 0 on error.
  *
- * This function just sets up the error module or Eina. It is also
- * called by eina_init(). It returns 0 on failure, otherwise it
- * returns the number of times eina_error_init() has already been
- * called.
+ * This function sets up the error, magic and mempool modules of
+ * Eina. It is also called by eina_init(). It returns 0 on failure,
+ * otherwise it returns the number of times it has already been
+ * called. If Eina has been configured with the default memory pool,
+ * then the memory pool used in an Eina list will be
+ * "pass_through". Otherwise, the environment variable EINA_MEMPOOL is
+ * read and its value is chosen as memory pool ; if EINA_MEMPOOL is
+ * not defined, then the "chained_mempool" memory pool is chosen. If
+ * the memory pool is not found, then eina_list_init() return @c 0.
+ * See eina_error_init(), eina_magic_string_init() and
+ * eina_mempool_init() for the documentation of the initialisation of
+ * the dependency modules.
+ *
+ * When no more Eina lists are used, call eina_list_shutdown() to shut
+ * down the list module.
+ *
+ * @see eina_error_init()
+ * @see eina_magic_string_init()
+ * @see eina_mempool_init()
  */
 EAPI int
 eina_list_init(void)
 {
-   char *choice;
+   const char *choice;
 
    if (!_eina_list_init_count)
      {
-       eina_error_init();
-       eina_magic_string_init();
-       eina_mempool_init();
+	if (!eina_error_init())
+	  {
+	     fprintf(stderr, "Could not initialize eina error module\n");
+	     return 0;
+	  }
+
+	if (!eina_magic_string_init())
+	  {
+	     EINA_ERROR_PERR("ERROR: Could not initialize eina magic string module.\n");
+	     goto on_magic_string_fail;
+	  }
+
+	if (!eina_mempool_init())
+	  {
+	     EINA_ERROR_PERR("ERROR: Could not initialize eina mempool module.\n");
+	     goto on_mempool_fail;
+	  }
 
 #ifdef EINA_DEFAULT_MEMPOOL
        choice = "pass_through";
@@ -432,19 +487,20 @@ eina_list_init(void)
 	 choice = "chained_mempool";
 #endif
 
-       _eina_list_mp = eina_mempool_new(choice, "list", NULL,
+       _eina_list_mp = eina_mempool_add(choice, "list", NULL,
 					sizeof (Eina_List), 320);
        if (!_eina_list_mp)
          {
            EINA_ERROR_PERR("ERROR: Mempool for list cannot be allocated in list init.\n");
-           abort();
+	   goto on_init_fail;
          }
-       _eina_list_accounting_mp = eina_mempool_new(choice, "list_accounting", NULL,
+       _eina_list_accounting_mp = eina_mempool_add(choice, "list_accounting", NULL,
 						   sizeof (Eina_List_Accounting), 80);
        if (!_eina_list_accounting_mp)
          {
            EINA_ERROR_PERR("ERROR: Mempool for list accounting cannot be allocated in list init.\n");
-           abort();
+	   eina_mempool_del(_eina_list_mp);
+	   goto on_init_fail;
          }
 
        eina_magic_string_set(EINA_MAGIC_ITERATOR,
@@ -462,18 +518,26 @@ eina_list_init(void)
      }
 
    return ++_eina_list_init_count;
+
+ on_init_fail:
+   eina_mempool_shutdown();
+ on_mempool_fail:
+   eina_magic_string_shutdown();
+ on_magic_string_fail:
+   eina_error_shutdown();
+   return 0;
 }
 
 /**
  * @brief Shut down the list module.
  *
- * @return 0 when the error module is completely shut down, 1 or
+ * @return 0 when the list module is completely shut down, 1 or
  * greater otherwise.
  *
- * This function just shut down the error module set up by
- * eina_list_init(). It is also called by eina_shutdown(). It returns
- * 0 when it is called the same number of times than
- * eina_error_init().
+ * This function shuts down the mempool, magic and error modules set
+ * up by eina_list_init(). It is also called by eina_shutdown(). It
+ * returns 0 when it is called the same number of times than
+ * eina_list_init().
  */
 EAPI int
 eina_list_shutdown(void)
@@ -482,8 +546,8 @@ eina_list_shutdown(void)
 
    if (!_eina_list_init_count)
      {
-	eina_mempool_delete(_eina_list_accounting_mp);
-	eina_mempool_delete(_eina_list_mp);
+	eina_mempool_del(_eina_list_accounting_mp);
+	eina_mempool_del(_eina_list_mp);
 
 	eina_mempool_shutdown();
 	eina_magic_string_shutdown();
@@ -536,7 +600,7 @@ eina_list_append(Eina_List *list, const void *data)
 	return _eina_list_setup_accounting(new_l);
      }
 
-   EINA_MAGIC_CHECK_LIST(list);
+   EINA_MAGIC_CHECK_LIST(list, NULL);
 
    l = list->accounting->last;
    list->accounting->last = new_l;
@@ -591,7 +655,7 @@ eina_list_prepend(Eina_List *list, const void *data)
 
    if (!list) return _eina_list_setup_accounting(new_l);
 
-   EINA_MAGIC_CHECK_LIST(list);
+   EINA_MAGIC_CHECK_LIST(list, NULL);
 
    list->prev = new_l;
 
@@ -643,8 +707,8 @@ eina_list_append_relative(Eina_List *list, const void *data, const void *relativ
 {
    Eina_List *l;
    void *list_data;
-   
-   if (list) EINA_MAGIC_CHECK_LIST(list);
+
+   if (list) EINA_MAGIC_CHECK_LIST(list, NULL);
 
    EINA_LIST_FOREACH(list, l, list_data)
      {
@@ -682,7 +746,7 @@ eina_list_append_relative_list(Eina_List *list, const void *data, Eina_List *rel
    new_l = _eina_list_mempool_list_new(list);
    if (!new_l) return list;
 
-   EINA_MAGIC_CHECK_LIST(relative);
+   EINA_MAGIC_CHECK_LIST(relative, NULL);
    new_l->next = relative->next;
    new_l->data = (void *)data;
 
@@ -743,8 +807,8 @@ eina_list_prepend_relative(Eina_List *list, const void *data, const void *relati
 {
    Eina_List *l;
    void *list_data;
-   
-   if (list) EINA_MAGIC_CHECK_LIST(list);
+
+   if (list) EINA_MAGIC_CHECK_LIST(list, NULL);
 
    EINA_LIST_FOREACH(list, l, list_data)
      {
@@ -781,7 +845,7 @@ eina_list_prepend_relative_list(Eina_List *list, const void *data, Eina_List *re
    new_l = _eina_list_mempool_list_new(list);
    if (!new_l) return list;
 
-   EINA_MAGIC_CHECK_LIST(relative);
+   EINA_MAGIC_CHECK_LIST(relative, NULL);
 
    new_l->prev = relative->prev;
    new_l->next = relative;
@@ -816,17 +880,11 @@ EAPI Eina_List *
 eina_list_remove(Eina_List *list, const void *data)
 {
    Eina_List *l;
-   void *list_data;
 
-   if (list) EINA_MAGIC_CHECK_LIST(list);
+   if (list) EINA_MAGIC_CHECK_LIST(list, NULL);
 
-   EINA_LIST_FOREACH(list, l, list_data)
-     {
-         if (list_data == data)
+   l = eina_list_data_find_list(list, data);
              return eina_list_remove_list(list, l);
-     }
-
-   return list;
 }
 
 /**
@@ -868,7 +926,7 @@ eina_list_remove_list(Eina_List *list, Eina_List *remove_list)
    if (!list) return NULL;
    if (!remove_list) return list;
 
-   EINA_MAGIC_CHECK_LIST(remove_list);
+   EINA_MAGIC_CHECK_LIST(remove_list, NULL);
 
    if (remove_list->next) remove_list->next->prev = remove_list->prev;
    if (remove_list->prev)
@@ -878,12 +936,11 @@ eina_list_remove_list(Eina_List *list, Eina_List *remove_list)
      }
    else
      return_l = remove_list->next;
-   if (remove_list == list->accounting->last)
+   if (remove_list == remove_list->accounting->last)
      {
-       EINA_MAGIC_CHECK_LIST(list);
+       EINA_MAGIC_CHECK_LIST(list, NULL);
        list->accounting->last = remove_list->prev;
      }
-
    _eina_list_mempool_list_free(remove_list);
    return return_l;
 }
@@ -895,7 +952,7 @@ eina_list_remove_list(Eina_List *list, Eina_List *remove_list)
  * @return A NULL pointer
  *
  * This function frees all the nodes of @p list. It does not free the
- * data of the nodes. To free them, use #EINA_LIST_FOREACH.
+ * data of the nodes. To free them, use #EINA_LIST_FREE.
  */
 EAPI Eina_List *
 eina_list_free(Eina_List *list)
@@ -904,7 +961,7 @@ eina_list_free(Eina_List *list)
 
    if (!list) return NULL;
 
-   EINA_MAGIC_CHECK_LIST(list);
+   EINA_MAGIC_CHECK_LIST(list, NULL);
 
    for (l = list; l;)
      {
@@ -953,25 +1010,87 @@ eina_list_promote_list(Eina_List *list, Eina_List *move_list)
    if (!move_list) return list;
    /* Promoting head to be head. */
    if (move_list == list) return list;
+   if (move_list->next == list) return move_list;
 
-   EINA_MAGIC_CHECK_LIST(list);
-   EINA_MAGIC_CHECK_LIST(move_list);
-
-   /* Update pointer to the last entry if necessary. */
-   if (move_list == list->accounting->last)
-     list->accounting->last = move_list->prev;
+   EINA_MAGIC_CHECK_LIST(list, NULL);
+   EINA_MAGIC_CHECK_LIST(move_list, NULL);
 
    /* Remove the promoted item from the list. */
-   if (move_list->next) move_list->next->prev = move_list->prev;
-   if (move_list->prev) move_list->prev->next = move_list->next;
-   else list = move_list->next;
+   if (!move_list->prev)
+      move_list->next->prev = NULL;
+   else
+     {
+	move_list->prev->next = move_list->next;
+	if (move_list == list->accounting->last)
+	   list->accounting->last = move_list->prev;
+	else
+	   move_list->next->prev = move_list->prev;
+     }
 
-   move_list->prev = list->prev;
-   if (list->prev)
-     list->prev->next = move_list;
-   list->prev = move_list;
+   /* Add the promoted item in the list. */
    move_list->next = list;
+   move_list->prev = list->prev;
+   list->prev = move_list;
+   if (move_list->prev)
+      move_list->prev->next = move_list;
+
    return move_list;
+}
+
+/**
+ * @brief Move the specified data to the tail of the list.
+ *
+ * @param list The list handle to move the data.
+ * @param move_list The list node to move.
+ * @return A new list handle to replace the old one
+ *
+ * This function move @p move_list to the back of @p list. If list is
+ * @c NULL, @c NULL is returned. If @p move_list is @c NULL,
+ * @p list is returned. Otherwise, a new list pointer that should be
+ * used in place of the one passed to this function.
+ *
+ * Example:
+ * @code
+ * extern Eina_List *list;
+ * Eina_List *l;
+ * extern void *my_data;
+ * void *data;
+ *
+ * EINA_LIST_FOREACH(list, l, data)
+ *   {
+ *     if (data == my_data)
+ *       {
+ *         list = eina_list_demote_list(list, l);
+ *         break;
+ *       }
+ *   }
+ * @endcode
+ */
+EAPI Eina_List *
+eina_list_demote_list(Eina_List *list, Eina_List *move_list)
+{
+   if (!list) return NULL;
+   if (!move_list) return list;
+   /* Demoting tail to be tail. */
+   if (move_list == list->accounting->last) return list;
+
+   EINA_MAGIC_CHECK_LIST(list, NULL);
+   EINA_MAGIC_CHECK_LIST(move_list, NULL);
+
+   /* Update pointer list if necessary. */
+   if (list == move_list)
+      list = move_list->next;
+   /* Remove the demoted item from the list. */
+   if (move_list->prev)
+      move_list->prev->next = move_list->next;
+   move_list->next->prev = move_list->prev;
+   /* Add the demoted item in the list. */
+   move_list->prev = list->accounting->last;
+   move_list->prev->next = move_list;
+   move_list->next = NULL;
+   list->accounting->last = move_list;
+
+   return list;
 }
 
 /**
@@ -1021,7 +1140,7 @@ eina_list_data_find_list(const Eina_List *list, const void *data)
    const Eina_List *l;
    void *list_data;
 
-   if (list) EINA_MAGIC_CHECK_LIST(list);
+   if (list) EINA_MAGIC_CHECK_LIST(list, NULL);
 
    EINA_LIST_FOREACH(list, l, list_data)
      {
@@ -1072,7 +1191,7 @@ eina_list_nth_list(const Eina_List *list, unsigned int n)
    const Eina_List *l;
    unsigned int i;
 
-   if (list) EINA_MAGIC_CHECK_LIST(list);
+   if (list) EINA_MAGIC_CHECK_LIST(list, NULL);
 
    /* check for non-existing nodes */
    if ((!list) || (n > (list->accounting->count - 1)))
@@ -1170,11 +1289,17 @@ static inline unsigned int eina_list_count(const Eina_List *list);
  * @brief Reverse all the elements in the list.
  *
  * @param list The list to reverse.
- * @return The list after it has been reversed.
+ * @return The list head after it has been reversed.
  *
  * This function reverses the order of all elements in @p list, so the
  * last member is now first, and so on. If @p list is @c NULL, this
  * functon returns @c NULL.
+ *
+ * @note @b in-place: this will change the given list, so you should
+ * now point to the new list head that is returned by this function.
+ *
+ * @see eina_list_reverse_clone()
+ * @see eina_list_iterator_reversed_new()
  */
 EAPI Eina_List *
 eina_list_reverse(Eina_List *list)
@@ -1183,7 +1308,7 @@ eina_list_reverse(Eina_List *list)
 
    if (!list) return NULL;
 
-   EINA_MAGIC_CHECK_LIST(list);
+   EINA_MAGIC_CHECK_LIST(list, NULL);
 
    l1 = list;
    l2 = list->accounting->last;
@@ -1203,19 +1328,89 @@ eina_list_reverse(Eina_List *list)
 }
 
 /**
+ * @brief Clone (copy) all the elements in the list in reverse order.
+ *
+ * @param list The list to reverse.
+ * @return The new list that has been reversed.
+ *
+ * This function reverses the order of all elements in @p list, so the
+ * last member is now first, and so on. If @p list is @c NULL, this
+ * functon returns @c NULL. This returns a copy of the given list.
+ *
+ * @note @b copy: this will copy the list and you should then
+ * eina_list_free() when it is not required anymore.
+ *
+ * @see eina_list_reverse()
+ * @see eina_list_clone()
+ */
+EAPI Eina_List *
+eina_list_reverse_clone(const Eina_List *list)
+{
+   const Eina_List *l;
+   Eina_List *clone;
+   void *data;
+
+   if (!list) return NULL;
+
+   EINA_MAGIC_CHECK_LIST(list, NULL);
+
+   clone = NULL;
+   EINA_LIST_FOREACH(list, l, data)
+     clone = eina_list_prepend(clone, data);
+
+   return clone;
+}
+
+/**
+ * @brief Clone (copy) all the elements in the list in exact order.
+ *
+ * @param list The list to clone.
+ * @return The new list that has been cloned.
+ *
+ * This function clone in order of all elements in @p list. If @p list
+ * is @c NULL, this functon returns @c NULL. This returns a copy of
+ * the given list.
+ *
+ * @note @b copy: this will copy the list and you should then
+ * eina_list_free() when it is not required anymore.
+ *
+ * @see eina_list_reverse_clone()
+ */
+EAPI Eina_List *
+eina_list_clone(const Eina_List *list)
+{
+   const Eina_List *l;
+   Eina_List *clone;
+   void *data;
+
+   if (!list) return NULL;
+
+   EINA_MAGIC_CHECK_LIST(list, NULL);
+
+   clone = NULL;
+   EINA_LIST_FOREACH(list, l, data)
+     clone = eina_list_append(clone, data);
+
+   return clone;
+}
+
+/**
  * @brief Sort a list according to the ordering func will return.
  *
  * @param list The list handle to sort.
  * @param size The length of the list to sort.
  * @param func A function pointer that can handle comparing the list data
  * nodes.
- * @return A new sorted list.
+ * @return the new head of list.
  *
  * This function sorts @p list. @p size if the number of the first
  * element to sort. If @p size is 0 or greater than the number of
  * elements in @p list, all the elemnts are sorted. @p func is used to
  * compare two elements of @p list. If @p list or @p func are @c NULL,
  * this function returns @c NULL.
+ *
+ * @note @b in-place: this will change the given list, so you should
+ * now point to the new list head that is returned by this function.
  *
  * Example:
  * @code
@@ -1246,7 +1441,7 @@ eina_list_sort(Eina_List *list, unsigned int size, Eina_Compare_Cb func)
 
    EINA_SAFETY_ON_NULL_RETURN_VAL(func, list);
    if (!list) return NULL;
-   EINA_MAGIC_CHECK_LIST(list);
+   EINA_MAGIC_CHECK_LIST(list, NULL);
 
    /* if the caller specified an invalid size, sort the whole list */
    if ((size == 0) ||
@@ -1446,17 +1641,106 @@ eina_list_sorted_merge(Eina_List *left, Eina_List *right, Eina_Compare_Cb func)
    return ret;
 }
 
+EAPI Eina_List *
+eina_list_search_sorted_near_list(const Eina_List *list, Eina_Compare_Cb func, const void *data)
+{
+   const Eina_List *ct;
+   void *d;
+   unsigned int inf, sup, cur, tmp;
+   int part;
+
+   if (!list) return NULL;
+
+   inf = 0;
+   sup = eina_list_count(list) ;
+   cur = sup >> 1;
+   ct = eina_list_nth_list(list, cur);
+   d = eina_list_data_get(ct);
+
+   while ((part = func(d, data)))
+     {
+       if (inf == sup
+	   || (part < 0 && inf == cur)
+	   || (part > 0 && sup == cur))
+	 return (Eina_List*) ct;
+       if (part < 0)
+          inf = (sup + inf) >> 1;
+       else
+          sup = (sup + inf) >> 1;
+       /* Faster to move directly from where we are to the new position than using eina_list_nth_list. */
+       tmp = (sup + inf) >> 1;
+       if (tmp < cur)
+	 for (; cur != tmp; cur--, ct = eina_list_prev(ct))
+	   ;
+       else
+	 for (; cur != tmp; cur++, ct = eina_list_next(ct))
+	   ;
+       d = eina_list_data_get(ct);
+     }
+
+   return (Eina_List*) ct;
+}
+
+EAPI Eina_List *
+eina_list_search_sorted_list(const Eina_List *list, Eina_Compare_Cb func, const void *data)
+{
+   Eina_List *lnear;
+   void      *d;
+
+   lnear = eina_list_search_sorted_near_list(list, func, data);
+   if (!lnear) return NULL;
+   d = eina_list_data_get(lnear);
+   if (!func(d, data))
+     return lnear;
+   return NULL;
+}
+
+EAPI void *
+eina_list_search_sorted(const Eina_List *list, Eina_Compare_Cb func, const void *data)
+{
+   return eina_list_data_get(eina_list_search_sorted_list(list, func, data));
+}
+
+EAPI Eina_List *
+eina_list_search_unsorted_list(const Eina_List *list, Eina_Compare_Cb func, const void *data)
+{
+   const Eina_List *l;
+   void *d;
+
+   EINA_LIST_FOREACH(list, l, d)
+     {
+       if (!func(d, data))
+	 return (Eina_List*) l;
+     }
+   return NULL;
+}
+
+EAPI void *
+eina_list_search_unsorted(const Eina_List *list, Eina_Compare_Cb func, const void *data)
+{
+   return eina_list_data_get(eina_list_search_unsorted_list(list, func, data));
+}
+
+
 /**
  * @brief Returned a new iterator asociated to a list.
  *
  * @param list The list.
  * @return A new iterator.
  *
- * This function returns a newly allocated iterator associated to
- * @p list. If @p list is @c NULL or the count member of @p list is
- * less or equal than 0, this function returns NULL. If the memory can
- * not be allocated, NULL is returned and #EINA_ERROR_OUT_OF_MEMORY is
- * set. Otherwise, a valid iterator is returned.
+ * This function returns a newly allocated iterator associated to @p
+ * list. If @p list is @c NULL or the count member of @p list is less
+ * or equal than 0, this function still returns a valid iterator that
+ * will always return false on eina_iterator_next(), thus keeping API
+ * sane.
+ *
+ * If the memory can not be allocated, NULL is returned and
+ * #EINA_ERROR_OUT_OF_MEMORY is set. Otherwise, a valid iterator is
+ * returned.
+ *
+ * @warning if the list structure changes then the iterator becomes
+ *    invalid! That is, if you add or remove nodes this iterator
+ *    behavior is undefined and your program may crash!
  */
 EAPI Eina_Iterator *
 eina_list_iterator_new(const Eina_List *list)
@@ -1477,6 +1761,53 @@ eina_list_iterator_new(const Eina_List *list)
    it->current = list;
 
    it->iterator.next = FUNC_ITERATOR_NEXT(eina_list_iterator_next);
+   it->iterator.get_container = FUNC_ITERATOR_GET_CONTAINER(eina_list_iterator_get_container);
+   it->iterator.free = FUNC_ITERATOR_FREE(eina_list_iterator_free);
+
+   return &it->iterator;
+}
+
+/**
+ * @brief Returned a new reversed iterator asociated to a list.
+ *
+ * @param list The list.
+ * @return A new iterator.
+ *
+ * This function returns a newly allocated iterator associated to @p
+ * list. If @p list is @c NULL or the count member of @p list is less
+ * or equal than 0, this function still returns a valid iterator that
+ * will always return false on eina_iterator_next(), thus keeping API
+ * sane.
+ *
+ * Unlike eina_list_iterator_new(), this will walk the list backwards.
+ *
+ * If the memory can not be allocated, NULL is returned and
+ * #EINA_ERROR_OUT_OF_MEMORY is set. Otherwise, a valid iterator is
+ * returned.
+ *
+ * @warning if the list structure changes then the iterator becomes
+ *    invalid! That is, if you add or remove nodes this iterator
+ *    behavior is undefined and your program may crash!
+ */
+EAPI Eina_Iterator *
+eina_list_iterator_reversed_new(const Eina_List *list)
+{
+   Eina_Iterator_List *it;
+
+   eina_error_set(0);
+   it = calloc(1, sizeof (Eina_Iterator_List));
+   if (!it) {
+      eina_error_set(EINA_ERROR_OUT_OF_MEMORY);
+      return NULL;
+   }
+
+   EINA_MAGIC_SET(it, EINA_MAGIC_LIST_ITERATOR);
+   EINA_MAGIC_SET(&it->iterator, EINA_MAGIC_ITERATOR);
+
+   it->head = eina_list_last(list);
+   it->current = it->head;
+
+   it->iterator.next = FUNC_ITERATOR_NEXT(eina_list_iterator_prev);
    it->iterator.get_container = FUNC_ITERATOR_GET_CONTAINER(eina_list_iterator_get_container);
    it->iterator.free = FUNC_ITERATOR_FREE(eina_list_iterator_free);
 

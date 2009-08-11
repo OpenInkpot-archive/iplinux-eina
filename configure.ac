@@ -1,9 +1,10 @@
 # get rid of that stupid cache mechanism
 rm -f config.cache
 
-AC_INIT([eina], [0.0.1], [enlightenment-devel@lists.sourceforge.net])
+AC_INIT([eina], [0.0.2.062], [enlightenment-devel@lists.sourceforge.net])
 AC_PREREQ([2.60])
-AC_CONFIG_SRCDIR(configure.ac)
+AC_CONFIG_SRCDIR([configure.ac])
+AC_CONFIG_MACRO_DIR([m4])
 AC_CANONICAL_BUILD
 AC_CANONICAL_HOST
 AC_ISC_POSIX
@@ -27,7 +28,17 @@ AC_SUBST(version_info)
 
 ### Needed information
 
-MODULE_ARCH="$host_os-$host_cpu"
+release="ver-svn-03"
+case "$host_os" in
+   mingw32ce* | cegcc*)
+      MODULE_ARCH="$host_os-$host_cpu"
+      ;;
+   *)
+      release_info="-release $release"
+      MODULE_ARCH="$host_os-$host_cpu-$release"
+      ;;
+esac
+AC_SUBST(release_info)
 AC_SUBST(MODULE_ARCH)
 AC_DEFINE_UNQUOTED(MODULE_ARCH, "${MODULE_ARCH}", "Module architecture")
 
@@ -43,87 +54,127 @@ EFL_CHECK_PTHREAD([have_pthread="yes"], [have_pthread="no"])
 
 # Magic debug
 AC_ARG_ENABLE([magic-debug],
-   [AC_HELP_STRING([--enable-magic-debug], [enable magic debug of eina structure])],
+   [AC_HELP_STRING([--disable-magic-debug], [disable magic debug of eina structure @<:@default=enabled@:>@])],
    [
     if test "x${enableval}" = "xyes" ; then
-       enable_magic_debug="yes"
+       have_magic_debug="yes"
     else
-       enable_magic_debug="no"
+       have_magic_debug="no"
     fi
    ],
-   [enable_magic_debug="yes"]
-)
-AC_MSG_CHECKING([whether magic debug is enable])
-AC_MSG_RESULT([${enable_magic_debug}])
+   [have_magic_debug="yes"])
 
-EINA_MAGIC_DEBUG=0
-if test "x${enable_magic_debug}" = "xyes" ; then
-   EINA_MAGIC_DEBUG=1
+AC_MSG_CHECKING([whether magic debug is enable])
+AC_MSG_RESULT([${have_magic_debug}])
+
+if test "x${have_magic_debug}" = "xyes" ; then
+   EINA_CONFIGURE_MAGIC_DEBUG="#define EINA_MAGIC_DEBUG"
 fi
-AC_SUBST(EINA_MAGIC_DEBUG)
+AC_SUBST(EINA_CONFIGURE_MAGIC_DEBUG)
 
 # Safety checks (avoid crashes on wrong api usage)
-want_safety_checks="yes"
-AC_MSG_CHECKING(whether to do safety checking on api parameters)
 AC_ARG_ENABLE(safety-checks,
-  AC_HELP_STRING(
-    [--disable-safety-checks],
-    [disable safety checks for NULL pointers and like. [[default=enabled]]]
-  ),
-  [ want_safety_checks="$enableval" ]
-)
-AC_MSG_RESULT($want_safety_checks)
+   [AC_HELP_STRING([--disable-safety-checks], [disable safety checks for NULL pointers and like. @<:@default=enabled@:>@])],
+   [
+    if test "x${enableval}" = "xyes" ; then
+       have_safety_checks="yes"
+    else
+       have_safety_checks="no"
+    fi
+   ],
+   [have_safety_checks="yes"])
 
-AM_CONDITIONAL(SAFETY_CHECKS, test "x$want_safety_checks" = "xyes")
-if test "x$want_safety_checks" = "xyes"; then
+AC_MSG_CHECKING(whether to do safety checking on api parameters)
+AC_MSG_RESULT($have_safety_checks)
+
+AM_CONDITIONAL(SAFETY_CHECKS, test "x$have_safety_checks" = "xyes")
+if test "x$have_safety_checks" = "xyes"; then
   AC_DEFINE(EINA_SAFETY_CHECKS, 1, [disable safety checks for NULL pointers and like.])
-  EINA_SAFETY_CHECKS=1
-else
-  EINA_SAFETY_CHECKS=0
+  EINA_CONFIGURE_SAFETY_CHECKS="#define EINA_SAFETY_CHECKS"
 fi
-AC_SUBST(EINA_SAFETY_CHECKS)
+AC_SUBST(EINA_CONFIGURE_SAFETY_CHECKS)
 
 # Choose best memory pool
 AC_ARG_ENABLE([default-mempool],
-   [AC_HELP_STRING([--enable-default-mempool], [Default memory allocator could be faster for some computer])],
+   [AC_HELP_STRING([--enable-default-mempool], [Default memory allocator could be faster for some computer. @<:@default=disabled@:>@])],
    [
     if test "x${enableval}" = "xyes"; then
-       enable_default_mempool="yes"
+       have_default_mempool="yes"
     else
-       enable_default_mempool="no"
+       have_default_mempool="no"
     fi
    ],
-   [enable_default_mempool="no"]
+   [have_default_mempool="no"]
 )
 AC_MSG_CHECKING([whether to use default mempool allocator])
-AC_MSG_RESULT([${enable_default_mempool}])
+AC_MSG_RESULT([${have_default_mempool}])
 
-EINA_DEFAULT_MEMPOOL=0
-if test "x${enable_default_mempool}" = "xyes" ; then
-   EINA_DEFAULT_MEMPOOL=1
+if test "x${have_default_mempool}" = "xyes" ; then
+   EINA_CONFIGURE_DEFAULT_MEMPOOL="#define EINA_DEFAULT_MEMPOOL"
 fi
-AC_SUBST(EINA_DEFAULT_MEMPOOL)
+AC_SUBST(EINA_CONFIGURE_DEFAULT_MEMPOOL)
 
 # Report stringshare usage
 AC_ARG_ENABLE([stringshare-usage],
-   [AC_HELP_STRING([--enable-stringshare-usage], [Report stringshare usage on stringshare shutdown])],
+   [AC_HELP_STRING([--enable-stringshare-usage], [Report stringshare usage on stringshare shutdown. @<:@default=disabled@:>@])],
    [
     if test "x${enableval}" = "xyes"; then
-       enable_stringshare_usage="yes"
+       have_stringshare_usage="yes"
     else
-       enable_stringshare_usage="no"
+       have_stringshare_usage="no"
     fi
    ],
-   [enable_stringshare_usage="no"]
+   [have_stringshare_usage="no"]
 )
 AC_MSG_CHECKING([whether to report stringshare usage])
-AC_MSG_RESULT([${enable_stringshare_usage}])
+AC_MSG_RESULT([${have_stringshare_usage}])
 
-if test "x${enable_stringshare_usage}" = "xyes"; then
+if test "x${have_stringshare_usage}" = "xyes"; then
    AC_DEFINE(EINA_STRINGSHARE_USAGE, 1, [Report Eina stringshare usage pattern])
 fi
 
-# Ememoa memory pool
+# Check if we want to benchmark on real data
+enable_benchmark_e17="no"
+AC_ARG_ENABLE([e17],
+   [AC_HELP_STRING([--enable-e17], [enable heavy benchmark @<:@default=no@:>@])],
+   [
+    if test "x${enableval}" = "xyes" ; then
+       enable_benchmark_e17="yes"
+    else
+       enable_benchmark_e17="no"
+    fi
+   ],
+   [enable_benchmark_e17="no"])
+
+AC_MSG_CHECKING([whether e17 real data benchmark are built])
+AC_MSG_RESULT([${enable_benchmark_e17}])
+
+AM_CONDITIONAL(EINA_ENABLE_BENCHMARK_E17, test "x${enable_benchmark_e17}" = "xyes")
+
+
+### Checks for programs
+AC_PROG_CC
+
+# pkg-config
+PKG_PROG_PKG_CONFIG
+
+# doxygen program for documentation building
+
+EFL_CHECK_DOXYGEN([build_doc="yes"], [build_doc="no"])
+
+
+### Checks for libraries
+
+# Evil library for compilation on Windows CE
+
+case "$host_os" in
+   mingw* | cegcc*)
+   PKG_CHECK_MODULES([EVIL], [evil])
+   AC_DEFINE(HAVE_EVIL, 1, [Set to 1 if evil package is installed])
+   ;;
+esac
+
+# Check ememoa memory pool library
 
 AC_ARG_ENABLE([ememoa],
    [AC_HELP_STRING([--enable-ememoa], [build ememoa memory pool module @<:@default=yes@:>@])],
@@ -138,100 +189,6 @@ AC_ARG_ENABLE([ememoa],
 )
 AC_MSG_CHECKING([whether to use ememoa for memory pool])
 AC_MSG_RESULT([$enable_ememoa])
-
-# Static linking
-
-EINA_CHECK_STATIC([chained-pool], [chained pool])
-EINA_CHECK_STATIC([ememoa-fixed], [ememoa fixed])
-EINA_CHECK_STATIC([ememoa-unknown], [ememoa unknown])
-EINA_CHECK_STATIC([pass-through], [pass through])
-EINA_CHECK_STATIC([fixed-bitmap], [fixed bitmap])
-
-# Unit tests, coverage and benchmarking
-
-EFL_CHECK_TESTS([enable_tests="yes"], [enable_tests="no"])
-EFL_CHECK_COVERAGE([${enable_tests}], [enable_coverage="yes"], [enable_coverage="no"])
-EFL_CHECK_BENCHMARK([enable_benchmark="yes"], [enable_benchmark="no"])
-
-
-### Checks for programs
-AC_PROG_CC
-
-# doxygen program for documentation building
-
-EFL_CHECK_DOXYGEN([build_doc="yes"], [build_doc="no"])
-
-
-### Checks for libraries
-
-PKG_PROG_PKG_CONFIG
-
-# Evil library for compilation on Windows CE
-
-case "$host_os" in
-   mingw* | cegcc*)
-   PKG_CHECK_MODULES([EVIL], [evil])
-   AC_DEFINE(HAVE_EVIL, 1, [Set to 1 if evil package is installed])
-   ;;
-esac
-
-# Glib library for comparison in the benchmark
-
-have_glib="no"
-if test "x${enable_benchmark}" = "xyes" ; then
-   PKG_CHECK_MODULES([GLIB],
-      [glib-2.0],
-      [have_glib="yes"],
-      [have_glib="no"]
-   )
-fi
-
-AM_CONDITIONAL(EINA_HAVE_GLIB, test "x${have_glib}" = "xyes")
-
-# Evas library for comparison in the benchmark
-
-have_evas="no"
-if test "x${enable_benchmark}" = "xyes" ; then
-   PKG_CHECK_MODULES([EVAS],
-      [evas],
-      [have_evas="yes"],
-      [have_evas="no"]
-   )
-fi
-
-AM_CONDITIONAL(EINA_HAVE_EVAS, test "x${have_evas}" = "xyes")
-
-# Ecore library for comparison in the benchmark
-
-have_ecore="no"
-if test "x${enable_benchmark}" = "xyes" ; then
-   PKG_CHECK_MODULES([ECORE],
-      [ecore],
-      [have_ecore="yes"],
-      [have_ecore="no"]
-   )
-fi
-
-AM_CONDITIONAL(EINA_HAVE_ECORE, test "x${have_ecore}" = "xyes")
-
-# Check if we want to benchmark on real data
-enable_benchmark_e17="no"
-AC_ARG_ENABLE([e17],
-   [AC_HELP_STRING([--enable-e17], [enable heavy benchmark @<:@default=no@:>@])],
-   [
-    if test "x${enableval}" = "xyes" ; then
-       enable_benchmark_e17="yes"
-    else
-       enable_benchmark_e17="no"
-    fi
-   ],
-   [enable_benchmark_e17="no"]
-)
-AC_MSG_CHECKING([whether e17 real data benchmark are built])
-AC_MSG_RESULT([${enable_benchmark_e17}])
-AM_CONDITIONAL(EINA_ENABLE_BENCHMARK_E17, test "x${enable_benchmark_e17}" = "xyes")
-
-# Check ememoa memory pool library
 
 if test "x${enable_ememoa}" = "xyes" ; then
    PKG_CHECK_MODULES([EMEMOA],
@@ -265,6 +222,16 @@ AC_C_INLINE
 AC_C___ATTRIBUTE__
 AC_PROG_CC_STDC
 
+EINA_CPPFLAGS=""
+case "$host_os" in
+   mingw32ce* | cegcc*)
+      EINA_CPPFLAGS="-D_WIN32_WCE=0x0420"
+      ;;
+   mingw*)
+      EINA_CPPFLAGS="-D_WIN32_WINNT=0x0500"
+      ;;
+esac
+
 EINA_CFLAGS="${EFL_COVERAGE_CFLAGS}"
 case "${host_os}" in
    cegcc*)
@@ -280,9 +247,16 @@ if test "x$enable_coverage" = "xyes" ; then
 fi
 
 if ! test "${VMIC}" = "x" ; then
-   EINA_CFLAGS="${EINA_CFLAGS} -Wall -W -Wextra" # -Werror
+   EINA_CFLAGS="${EINA_CFLAGS} -Wall -W" # -Werror
 fi
 
+GCC_MAJOR_VERSION=`$CC -dumpversion | sed "s/\..*//"`
+
+if test "$GCC_MAJOR_VERSION" = "3" ; then
+   EINA_CFLAGS="${EINA_CFLAGS} -fno-strict-aliasing"
+fi
+
+AC_SUBST(EINA_CPPFLAGS)
 AC_SUBST(EINA_CFLAGS)
 
 
@@ -295,11 +269,17 @@ case "${host_os}" in
       EINA_LIBS="${EINA_LIBS} -ldl ${EVIL_LIBS} -lm"
       lt_enable_auto_import="-Wl,--enable-auto-import"
    ;;
-   *bsd*)
+   dragonfly*|openbsd*)
+      EINA_LIBS="${EINA_LIBS} -lm"
+   ;;
+   freebsd*|netbsd*)
       EINA_LIBS="${EINA_LIBS} -lrt -lm"
    ;;
-   *darwin*)
+   darwin*)
       EINA_LIBS="${EINA_LIBS} -lm"
+   ;;
+   cygwin*)
+      EINA_LIBS="${EINA_LIBS} -ldl -lm"
    ;;
    *)
       EINA_LIBS="${EINA_LIBS} -ldl -lrt -lm"
@@ -315,12 +295,9 @@ AC_FUNC_ALLOCA
 #dlopen and dladdr
 dlopen_libs=""
 case "$host_os" in
-   mingw32ce* | cegcc*)
+   mingw* | cegcc*)
 # managed by evil
       AC_DEFINE(HAVE_DLADDR)
-      ;;
-   mingw*)
-dnl nothing on mingw platform
       ;;
    *)
       AC_CHECK_FUNCS([dlopen], [res="yes"], [res="no"])
@@ -339,6 +316,25 @@ dnl nothing on mingw platform
 esac
 AC_SUBST(dlopen_libs)
 
+### Modules
+
+EINA_CHECK_MODULE([chained-pool], [yes], [chained pool])
+EINA_CHECK_MODULE([ememoa-fixed], [${enable_ememoa}], [ememoa fixed])
+EINA_CHECK_MODULE([ememoa-unknown], [${enable_ememoa}], [ememoa unknown])
+EINA_CHECK_MODULE([fixed-bitmap], [yes], [fixed bitmap])
+EINA_CHECK_MODULE([pass-through], [yes], [pass through])
+
+
+### Make the debug preprocessor configurable
+
+### Unit tests, coverage and benchmarking
+
+EFL_CHECK_TESTS([enable_tests="yes"], [enable_tests="no"])
+EFL_CHECK_COVERAGE([${enable_tests}], [enable_coverage="yes"], [enable_coverage="no"])
+EFL_CHECK_BENCHMARK([enable_benchmark="yes"], [enable_benchmark="no"])
+EINA_BENCH_MODULE([evas], [${enable_benchmark}], [evas], [enable_benchmark_evas="yes"], [enable_benchmark_evas="no"])
+EINA_BENCH_MODULE([ecore], [${enable_benchmark}], [ecore], [enable_benchmark_ecore="yes"], [enable_benchmark_ecore="no"])
+EINA_BENCH_MODULE([glib], [${enable_benchmark}], [glib-2.0], [enable_benchmark_glib="yes"], [enable_benchmark_glib="no"])
 
 ### Create the .pc.in file according to the major version
 #cat > ${srcdir}/eina-${VMAJ}.pc.in << EOF
@@ -355,9 +351,6 @@ AC_SUBST(dlopen_libs)
 #Libs.private: -ldl
 #Cflags: -I${includedir}/eina-@VMAJ@ -I${includedir}/eina-@VMAJ@/eina
 #EOF
-
-
-### Make the debug preprocessor configurable
 
 AC_CONFIG_FILES([
 Makefile
@@ -393,14 +386,20 @@ echo
 echo
 echo "Configuration Options Summary:"
 echo
+echo "  Magic debug..........: ${have_magic_debug}"
+echo "  Safety checks........: ${have_safety_checks}"
+echo "  Report string usage..: ${have_stringshare_usage}"
+echo "  Default mempool......: ${have_default_mempool}"
+echo "  Thread Support.......: ${have_pthread}"
+echo
 echo "  Documentation........: ${build_doc}"
 echo "  Tests................: ${enable_tests}"
 echo "  Coverage.............: ${enable_coverage}"
 echo "  Benchmark............: ${enable_benchmark}"
 if test "x${enable_benchmark}" = "xyes" ; then
-echo "    Glib...............: ${have_glib}"
-echo "    Evas...............: ${have_evas}"
-echo "    Ecore..............: ${have_ecore}"
+echo "    Glib...............: ${enable_benchmark_glib}"
+echo "    Evas...............: ${enable_benchmark_evas}"
+echo "    Ecore..............: ${enable_benchmark_ecore}"
 echo "    E17 real data......: ${enable_benchmark_e17}"
 fi
 echo
@@ -411,22 +410,12 @@ echo "  SSE..................: ${have_sse}"
 echo "  SSE2.................: ${have_sse2}"
 echo "  ALTIVEC..............: ${have_altivec}"
 echo
-echo "  Thread Support.......: ${have_pthread}"
-echo
-echo "  Magic debug..........: ${enable_magic_debug}"
-echo
-echo "  Report string usage..: ${enable_stringshare_usage}"
-echo
-echo "  Default mempool......: ${enable_default_mempool}"
-echo
-echo "  Memory pool:"
-echo "    Ememoa.............: ${enable_ememoa}"
-echo
-echo "  Static build of memory pools:"
-echo "    Chained pool.......: ${enable_static_chained_pool}"
-echo "    Ememoa fixed.......: ${enable_static_ememoa_fixed}"
-echo "    Ememoa unknown.....: ${enable_static_ememoa_unknown}"
-echo "    Pass through.......: ${enable_static_pass_through}"
+echo "  Memory pools:"
+echo "    Chained pool.......: ${enable_chained_pool}"
+echo "    Ememoa fixed.......: ${enable_ememoa_fixed}"
+echo "    Ememoa unknown.....: ${enable_ememoa_unknown}"
+echo "    Fixed bitmap.......: ${enable_fixed_bitmap}"
+echo "    Pass through.......: ${enable_pass_through}"
 echo
 echo "  Installation.........: make install"
 echo
@@ -436,3 +425,10 @@ echo "Now type 'make' ('gmake' on some systems) to compile $PACKAGE,"
 echo "and then afterwards as root (or the user who will install this), type"
 echo "'make install'. Change users with 'su' or 'sudo' appropriately."
 echo
+if test "x${have_static_module}" = "xyes" ; then
+echo -e "\0033\01331;31mWarning\0033\01331;0m: You are trying to link statically one or more modules to Eina."
+echo "         You must know what you are doing, or else you will have a lot of problems."
+echo "         And dolphins will disappear from the earth."
+echo "         Think about that."
+echo
+fi

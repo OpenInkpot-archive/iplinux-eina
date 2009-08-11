@@ -70,7 +70,7 @@ struct _Eina_Array
    unsigned int   count;  /**< Number of activ slot in the vector */
    unsigned int	  step;   /**< How much must we grow the vector when it is full */
 
-   EINA_MAGIC;
+   EINA_MAGIC
 };
 
 EAPI int          eina_array_init     (void);
@@ -111,10 +111,10 @@ EAPI Eina_Accessor *eina_array_accessor_new (const Eina_Array *array) EINA_MALLO
  * the following example:
  *
  * @code
- * Eina_Array          *array;
- * char                *item;
- * Eina_Array_Iterator  iterator;
- * unsigned int         i;
+ * Eina_Array         *array;
+ * char               *item;
+ * Eina_Array_Iterator iterator;
+ * unsigned int        i;
  *
  * // array is already filled,
  * // its elements are just duplicated strings,

@@ -1,3 +1,9 @@
+eina (0.0.2.062-1) asimov; urgency=low
+
+  * svn-03 snapshot
+
+ -- Mikhail Gusarov <dottedmag@dottedmag.net>  Wed, 12 Aug 2009 01:49:26 +0700
+
 eina (0.0.1-20090103-4+b1) asimov; urgency=low
 
  * Rebuild with new toolchain.
@@ -30,12 +36,12 @@ eina (0.0.1-20090103-1) unstable; urgency=low
 
 eina (0.0.1-2) unstable; urgency=low
 
-  * a SVN release.
+  * Updated version
 
- -- quaker <quaker66@gmail.com>  Fri, 26 Dec 2008 12:59:47 +0100
+ -- quaker <quaker66@gmail.com>  Thu, 22 Apr 2009 18:24:44 +0100
 
-eina (0.0.1-1) unstable; urgency=low
+eina (0.0.1+svnYYYYMMDD-1) unstable; urgency=low
 
-  * a CVS snapshot release.
+  * Clean up changelog
 
- -- Falko Schmidt <falko@alphagemini.org>  Tue, 21 Oct 2008 11:44:05 +0000
+ -- quaker <quaker66@gmail.com>  Tue, 21 Apr 2009 19:12:20 +0100

@@ -67,12 +67,17 @@
 
 EAPI int eina_stringshare_init(void);
 EAPI int eina_stringshare_shutdown(void);
+EAPI const char *eina_stringshare_add_length(const char *str, unsigned int slen) EINA_WARN_UNUSED_RESULT;
 EAPI const char *eina_stringshare_add(const char *str) EINA_WARN_UNUSED_RESULT;
 EAPI const char *eina_stringshare_ref(const char *str);
 EAPI void eina_stringshare_del(const char *str);
 EAPI int eina_stringshare_strlen(const char *str) EINA_CONST EINA_WARN_UNUSED_RESULT;
 EAPI void eina_stringshare_dump(void);
-    
+
+static inline Eina_Bool eina_stringshare_replace(const char **p_str, const char *news) EINA_ARG_NONNULL(1, 2);
+
+#include "eina_inline_stringshare.x"
+
 /**
  * @}
  */

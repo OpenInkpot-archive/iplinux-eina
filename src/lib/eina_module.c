@@ -29,6 +29,23 @@
 #include <dirent.h>
 #include <string.h>
 
+#ifdef HAVE_ALLOCA_H
+# include <alloca.h>
+#elif defined __GNUC__
+# define alloca __builtin_alloca
+#elif defined _AIX
+# define alloca __alloca
+#elif defined _MSC_VER
+# include <malloc.h>
+# define alloca _alloca
+#else
+# include <stddef.h>
+# ifdef  __cplusplus
+extern "C"
+# endif
+void *alloca (size_t);
+#endif
+
 #include <dlfcn.h>
 
 #ifdef HAVE_EVIL
@@ -49,11 +66,11 @@
  * @cond LOCAL
  */
 
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__CYGWIN__)
 # define MODULE_EXTENSION ".dll"
 #else
 # define MODULE_EXTENSION ".so"
-#endif /* ! _WIN32 */
+#endif /* !defined(_WIN32) && !defined(__CYGWIN__) */
 
 #define EINA_MODULE_SYMBOL_INIT "__eina_module_init"
 #define EINA_MODULE_SYMBOL_SHUTDOWN "__eina_module_shutdown"
@@ -100,7 +117,7 @@ static Eina_Bool _dir_list_get_cb(Eina_Module *m, void *data)
 static void _dir_list_cb(const char *name, const char *path, void *data)
 {
 	Dir_List_Cb_Data *cb_data = data;
-	unsigned int length;
+	size_t length;
 
 	length = strlen(name);
 	if (length < strlen(MODULE_EXTENSION) + 1) /* x.so */
@@ -110,7 +127,7 @@ static void _dir_list_cb(const char *name, const char *path, void *data)
 	{
 		char *file;
 		Eina_Module *m;
-		int length;
+		size_t length;
 
 		length = strlen(path) + strlen(name) + 2;
 
@@ -122,16 +139,52 @@ static void _dir_list_cb(const char *name, const char *path, void *data)
 		if (!m)
 			return;
 		/* call the user provided cb on this module */
-		cb_data->cb(m, cb_data->data);
+		if (!cb_data->cb(m, cb_data->data))
+		  eina_module_free(m);
 	}
 }
 static int _eina_module_count = 0;
+
+/**
+ * @endcond
+ */
+
+
+/*============================================================================*
+ *                                 Global                                     *
+ *============================================================================*/
+
 /*============================================================================*
  *                                   API                                      *
  *============================================================================*/
+
 /**
- * To be documented
- * FIXME: To be fixed
+ * @addtogroup Eina_Module_Group Module
+ *
+ * @brief These functions provide module management.
+ *
+ * @{
+ */
+
+/**
+ * @brief Initialize the eina module internal structure.
+ *
+ * @return 1 or greater on success, 0 on error.
+ *
+ * This function sets up the module module of Eina. It also registers
+ * the errors #EINA_ERROR_WRONG_MODULE and
+ * #EINA_ERROR_MODULE_INIT_FAILED. It is also called by
+ * eina_init(). It returns 0 on failure, otherwise it returns the
+ * number of times it has already been called. See eina_error_init()
+ * for the documentation of the initialisation of the dependency
+ * modules.
+ *
+ * Once the module module is not used anymore, then
+ * eina_module_shutdown() must be called to shut down the module
+ * module.
+ *
+ * @see eina_error_init()
+ * @see eina_init()
  */
 EAPI int
 eina_module_init(void)
@@ -141,7 +194,11 @@ eina_module_init(void)
 	if (_eina_module_count != 1)
 		goto end_init;
 
-	eina_error_init();
+	if (!eina_error_init())
+	{
+		fprintf(stderr, "Could not initialize eina error module.\n");
+		return 0;
+	}
 
 	EINA_ERROR_WRONG_MODULE = eina_error_msg_register("Wrong file format or no file module found");
 	EINA_ERROR_MODULE_INIT_FAILED = eina_error_msg_register("Module initialisation function failed");
@@ -149,9 +206,20 @@ eina_module_init(void)
 end_init:
 	return _eina_module_count;
 }
+
 /**
- * To be documented
- * FIXME: To be fixed
+ * @brief Shut down the eina module internal structures
+ *
+ * @return 0 when the module module is completely shut down, 1 or
+ * greater otherwise.
+ *
+ * This function shuts down the module module set up by
+ * eina_module_init(). It is called by eina_shutdown(). It
+ * returns 0 when it is called the same number of times than
+ * eina_module_init().
+ *
+ * @see eina_error_shutdown()
+ * @see eina_shutdown()
  */
 EAPI int
 eina_module_shutdown(void)
@@ -169,9 +237,82 @@ eina_module_shutdown(void)
 end_shutdown:
 	return _eina_module_count;
 }
+
 /**
- * To be documented
- * FIXME: To be fixed
+ * @brief Return a new module.
+ *
+ * @param file The name of the file module to load.
+ *
+ * This function returns a new module. If @p file is @c NULL, the
+ * function returns @c NULL, otherwise, it allocates an Eina_Module,
+ * stores a duplicate string of @p file, sets its reference to @c 0
+ * and its handle to @c NULL.
+ *
+ * When the new module is not needed anymore, use eina_module_free()
+ * to free the allocated memory.
+ *
+ * @see eina_module_load
+ */
+EAPI Eina_Module *eina_module_new(const char *file)
+{
+	Eina_Module *m;
+
+	EINA_SAFETY_ON_NULL_RETURN_VAL(file, NULL);
+	/* TODO check that the file exists. Update doc too */
+
+	m = malloc(sizeof(Eina_Module));
+	/* TODO add the magic */
+	m->file = strdup(file);
+	m->ref = 0;
+	m->handle = NULL;
+
+	return m;
+}
+
+/**
+ * @brief Delete a module.
+ *
+ * @param m The module to delete.
+ * @return EINA_TRUE on success, EINA_FALSE otherwise.
+ *
+ * This function calls eina_module_unload() if @p m has been previously
+ * loaded and frees the allocated memory. On success this function
+ * returns EINA_TRUE and EINA_FALSE otherwise. If @p m is @c NULL, the
+ * function returns immediatly.
+ */
+EAPI Eina_Bool eina_module_free(Eina_Module *m)
+{
+	EINA_SAFETY_ON_NULL_RETURN_VAL(m, EINA_FALSE);
+
+	if (m->handle)
+	{
+		if (eina_module_unload(m) == EINA_FALSE)
+			return EINA_FALSE;
+	}
+	free(m->file);
+	free(m);
+	return EINA_TRUE;
+}
+
+/**
+ * @brief Load a module.
+ *
+ * @param m The module to load.
+ * @return EINA_TRUE on success, EINA_FALSE otherwise.
+ *
+ * This function load the shared file object passed in
+ * eina_module_new(). If it is a internal Eina module (like the
+ * mempools), it also initialize it. It the shared file object can not
+ * be loaded, the error #EINA_ERROR_WRONG_MODULE is set and
+ * #EINA_FALSE is returned. If it is a internal Eina module and the
+ * module can not be initialized, the error
+ * #EINA_ERROR_MODULE_INIT_FAILED is set and #EINA_FALSE is
+ * returned. If the module has already been loaded, it's refeence
+ * counter is increased by one and #EINA_TRUE is returned. If @p m is
+ * @c NULL, the function returns immediatly #EINA_FALSE.
+ *
+ * When the symbols of the shared file objetcts are not needed
+ * anymore, call eina_module_unload() to unload the module.
  */
 EAPI Eina_Bool eina_module_load(Eina_Module *m)
 {
@@ -182,12 +323,14 @@ EAPI Eina_Bool eina_module_load(Eina_Module *m)
 
 	if (m->handle) goto loaded;
 
-	eina_error_set(EINA_ERROR_WRONG_MODULE);
-
 	dl_handle = dlopen(m->file, RTLD_NOW);
-	if (!dl_handle) return EINA_FALSE;
-
-	eina_error_set(EINA_ERROR_MODULE_INIT_FAILED);
+	if (!dl_handle)
+	  {
+	     EINA_ERROR_PDBG("could not dlopen(\"%s\", RTLD_NOW): %s\n",
+			     m->file, dlerror());
+	     eina_error_set(EINA_ERROR_WRONG_MODULE);
+	     return EINA_FALSE;
+	  }
 
 	initcall = dlsym(dl_handle, EINA_MODULE_SYMBOL_INIT);
 	if ((!initcall) || (!(*initcall)))
@@ -195,6 +338,7 @@ EAPI Eina_Bool eina_module_load(Eina_Module *m)
 	if ((*initcall)() == EINA_TRUE)
 		goto ok;
 
+	eina_error_set(EINA_ERROR_MODULE_INIT_FAILED);
 	dlclose(dl_handle);
 	return EINA_FALSE;
 ok:
@@ -205,9 +349,20 @@ loaded:
 	eina_error_set(0);
 	return EINA_TRUE;
 }
+
 /**
- * To be documented
- * FIXME: To be fixed
+ * @brief Unload a module.
+ *
+ * @param m The module to load.
+ * @return EINA_TRUE on success, EINA_FALSE otherwise.
+ *
+ * This function unload the module @p m that has been previously
+ * loaded by eina_module_load(). If the reference counter of @p m is
+ * strictly greater than @c 1, #EINA_FALSE is returned. Otherwise, the
+ * shared object file is closed and if it is a internal Eina module, it
+ * is shutted down just before. In that case, #EINA_TRUE is
+ * returned. In all case, the reference counter is decreased. If @p m
+ * is @c NULL, the function returns immediatly #EINA_FALSE.
  */
 EAPI Eina_Bool eina_module_unload(Eina_Module *m)
 {
@@ -226,45 +381,18 @@ EAPI Eina_Bool eina_module_unload(Eina_Module *m)
 	}
 	return EINA_FALSE;
 }
+
 /**
- * To be documented
- * FIXME: To be fixed
- */
-EAPI Eina_Module * eina_module_new(const char *file)
-{
-	Eina_Module *m;
-
-	EINA_SAFETY_ON_NULL_RETURN_VAL(file, NULL);
-	/* TODO check that the file exists */
-
-	m = malloc(sizeof(Eina_Module));
-	/* TODO add the magic */
-	m->file = strdup(file);
-	m->ref = 0;
-	m->handle = NULL;
-
-	return m;
-}
-/**
- * To be documented
- * FIXME: To be fixed
- */
-EAPI Eina_Bool eina_module_delete(Eina_Module *m)
-{
-	EINA_SAFETY_ON_NULL_RETURN_VAL(m, EINA_FALSE);
-
-	if (m->handle)
-	{
-		if (eina_module_unload(m) == EINA_FALSE)
-			return EINA_FALSE;
-	}
-	free(m->file);
-	free(m);
-	return EINA_TRUE;
-}
-/**
- * To be documented
- * FIXME: To be fixed
+ * @brief Retrive the data associated to a symbol.
+ *
+ * @param The module.
+ * @param symbol The symbol.
+ * @return The data associated to the symbol, or @c NULL on failure.
+ *
+ * This function returns the data associated to @p symbol of @p m. @p
+ * m must have been loaded before with eina_module_load(). If @p m
+ * is @c NULL, or if it has not been correctly loaded before, the
+ * function returns immediatly @c NULL.
  */
 EAPI void * eina_module_symbol_get(Eina_Module *m, const char *symbol)
 {
@@ -272,9 +400,16 @@ EAPI void * eina_module_symbol_get(Eina_Module *m, const char *symbol)
 	EINA_SAFETY_ON_NULL_RETURN_VAL(m->handle, NULL);
 	return dlsym(m->handle, symbol);
 }
+
 /**
- * To be documented
- * FIXME: To be fixed
+ * @brief Return the file name associated to the module.
+ *
+ * @param m The module.
+ * @return The file name.
+ *
+ * Return the file name passed in eina_module_new(). If @p m is
+ * @c NULL, the function returns immediatly @c NULL. The returned
+ * value must no be freed.
  */
 EAPI const char * eina_module_file_get(Eina_Module *m)
 {
@@ -327,9 +462,9 @@ EAPI char *eina_module_environment_path_get(const char *env, const char *sub_dir
 	env_dir = getenv(env);
 	if (env_dir)
 	{
-		char *path;
-		int   l1;
-		int   l2 = 0;
+		char  *path;
+		size_t l1;
+		size_t l2 = 0;
 
 		l1 = strlen(env_dir);
 		if (sub_dir && (*sub_dir != '\0'))
@@ -351,7 +486,7 @@ EAPI char *eina_module_environment_path_get(const char *env, const char *sub_dir
 }
 
 /**
- * Gets a list of modules found on the directory path
+ * Get a list of modules found on the directory path
  *
  * @param path The directory's path to search for modules
  * @param recursive Iterate recursively on the path
@@ -377,6 +512,7 @@ EAPI Eina_Array * eina_module_list_get(Eina_Array *array, const char *path, unsi
 
 	return list_get_cb_data.array;
 }
+
 /**
  * Load every module on the list of modules
  * @param list The list of modules
@@ -392,10 +528,7 @@ EAPI void eina_module_list_load(Eina_Array *array)
 	EINA_ARRAY_ITER_NEXT(array, i, m, iterator)
 		eina_module_load(m);
 }
-/**
- * To be documented
- * FIXME: To be fixed
- */
+
 EAPI void eina_module_list_unload(Eina_Array *array)
 {
 	Eina_Array_Iterator iterator;
@@ -407,11 +540,12 @@ EAPI void eina_module_list_unload(Eina_Array *array)
 	EINA_ARRAY_ITER_NEXT(array, i, m, iterator)
 		eina_module_unload(m);
 }
+
 /**
  * Helper function that iterates over the list of modules and calls
- * eina_module_delete on each
+ * eina_module_free on each
  */
-EAPI void eina_module_list_delete(Eina_Array *array)
+EAPI void eina_module_list_flush(Eina_Array *array)
 {
 	Eina_Array_Iterator iterator;
 	Eina_Module *m;
@@ -420,5 +554,11 @@ EAPI void eina_module_list_delete(Eina_Array *array)
 	EINA_SAFETY_ON_NULL_RETURN(array);
 
 	EINA_ARRAY_ITER_NEXT(array, i, m, iterator)
-		eina_module_delete(m);
+		eina_module_free(m);
+
+	eina_array_flush(array);
 }
+
+/**
+ * @}
+ */

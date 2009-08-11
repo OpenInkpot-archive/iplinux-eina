@@ -19,7 +19,11 @@
 #ifndef EINA_F16P16_H_
 #define EINA_F16P16_H_
 
-#include <stdint.h>
+#ifdef _MSC_VER
+# include <Evil.h>
+#else
+# include <stdint.h>
+#endif
 
 /**
  * To be documented
@@ -85,7 +89,7 @@ static inline Eina_F16p16 eina_f16p16_sub(Eina_F16p16 a, Eina_F16p16 b)
  */
 static inline Eina_F16p16 eina_f16p16_mul(Eina_F16p16 a, Eina_F16p16 b)
 {
-	return (a * b) >> 16;
+	return ((int64_t)a * (int64_t)b) >> 16;
 }
 /**
  * To be documented

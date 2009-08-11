@@ -3,16 +3,15 @@
 include /usr/share/cdbs/1/rules/debhelper.mk
 include /usr/share/cdbs/1/class/autotools.mk
 
-DEB_CONFIGURE_EXTRA_FLAGS := --disable-rpath --host=$(DEB_HOST_GNU_TYPE)
-DEB_MAKE_CLEAN_TARGET := clean
+DEB_CONFIGURE_EXTRA_FLAGS := --disable-rpath \
+                             --enable-static-chained-pool \
+                             --disable-magic-debug \
+							  --host=$(DEB_HOST_GNU_TYPE)
+DEB_CONFIGURE_SCRIPT := ./autogen.sh
+DEB_MAKE_CLEAN_TARGET := distclean
 DEB_DH_STRIP_ARGS := --dbg-package=libeina-dbg
-
-#build/libeina-doc::
-#	cd $(DEB_SRCDIR)/doc && make doc
-
-#install/libeina-doc::
-#	mkdir -p debian/libeina-doc/usr/share/doc/libeina-doc
-#	cp -R $(DEB_SRCDIR)/doc/html debian/libeina-doc/usr/share/doc/libeina-doc/
+CFLAGS += -fvisibility=hidden
+LDFLAGS += -fvisibility=hidden
 
 clean::
-	./autogen.sh --prefix=/usr $(DEB_CONFIGURE_EXTRA_FLAGS)
+	[ ! -f Makefile ] || make distclean

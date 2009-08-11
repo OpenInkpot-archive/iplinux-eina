@@ -48,7 +48,7 @@
 
 /**
  * @typedef Eina_List
- * Type for a generic single linked list.
+ * Type for a generic double linked list.
  */
 typedef struct _Eina_List Eina_List;
 
@@ -56,7 +56,7 @@ typedef struct _Eina_List_Accounting Eina_List_Accounting;
 
 /**
  * @struct _Eina_List
- * Type for a generic single linked list.
+ * Type for a generic double linked list.
  */
 struct _Eina_List /** A linked list node */
 {
@@ -65,16 +65,15 @@ struct _Eina_List /** A linked list node */
    Eina_List *prev; /**< Previous member in the list */
    struct _Eina_List_Accounting *accounting; /**< Private list accounting info - don't touch */
 
-   EINA_MAGIC;
+   EINA_MAGIC
 };
 
 struct _Eina_List_Accounting
 {
    Eina_List *last;
    unsigned int count;
-   EINA_MAGIC;
+   EINA_MAGIC
 };
-
 
 EAPI int eina_list_init(void);
 EAPI int eina_list_shutdown(void);
@@ -88,16 +87,24 @@ EAPI Eina_List *eina_list_prepend_relative_list (Eina_List *list, const void *da
 EAPI Eina_List *eina_list_remove (Eina_List *list, const void *data) EINA_ARG_NONNULL(2) EINA_WARN_UNUSED_RESULT;
 EAPI Eina_List *eina_list_remove_list (Eina_List *list, Eina_List *remove_list) EINA_ARG_NONNULL(2) EINA_WARN_UNUSED_RESULT;
 EAPI Eina_List *eina_list_promote_list (Eina_List *list, Eina_List *move_list) EINA_ARG_NONNULL(2) EINA_WARN_UNUSED_RESULT;
+EAPI Eina_List *eina_list_demote_list (Eina_List *list, Eina_List *move_list);
 EAPI void *eina_list_data_find(const Eina_List *list, const void *data) EINA_PURE EINA_ARG_NONNULL(2) EINA_WARN_UNUSED_RESULT;
 EAPI Eina_List *eina_list_data_find_list (const Eina_List *list, const void *data) EINA_PURE EINA_ARG_NONNULL(2) EINA_WARN_UNUSED_RESULT;
 EAPI Eina_List *eina_list_free (Eina_List *list);
 EAPI void *eina_list_nth(const Eina_List *list, unsigned int n) EINA_PURE EINA_WARN_UNUSED_RESULT;
 EAPI Eina_List *eina_list_nth_list (const Eina_List *list, unsigned int n) EINA_PURE EINA_WARN_UNUSED_RESULT;
 EAPI Eina_List *eina_list_reverse (Eina_List *list) EINA_WARN_UNUSED_RESULT;
+EAPI Eina_List *eina_list_reverse_clone(const Eina_List *list) EINA_WARN_UNUSED_RESULT;
+EAPI Eina_List *eina_list_clone(const Eina_List *list) EINA_WARN_UNUSED_RESULT;
 EAPI Eina_List *eina_list_sort (Eina_List *list, unsigned int size, Eina_Compare_Cb func) EINA_ARG_NONNULL(3) EINA_WARN_UNUSED_RESULT;
 EAPI Eina_List *eina_list_merge (Eina_List *left, Eina_List *right) EINA_WARN_UNUSED_RESULT;
 EAPI Eina_List *eina_list_sorted_merge(Eina_List *left, Eina_List *right, Eina_Compare_Cb func) EINA_ARG_NONNULL(3) EINA_WARN_UNUSED_RESULT;
 
+EAPI Eina_List *eina_list_search_sorted_near_list(const Eina_List *list, Eina_Compare_Cb func, const void *data);
+EAPI Eina_List *eina_list_search_sorted_list(const Eina_List *list, Eina_Compare_Cb func, const void *data);
+EAPI void *eina_list_search_sorted(const Eina_List *list, Eina_Compare_Cb func, const void *data);
+EAPI Eina_List *eina_list_search_unsorted_list(const Eina_List *list, Eina_Compare_Cb func, const void *data);
+EAPI void *eina_list_search_unsorted(const Eina_List *list, Eina_Compare_Cb func, const void *data);
 
 static inline Eina_List *eina_list_last (const Eina_List *list) EINA_PURE EINA_WARN_UNUSED_RESULT;
 static inline Eina_List *eina_list_next (const Eina_List *list) EINA_PURE EINA_WARN_UNUSED_RESULT;
@@ -106,6 +113,7 @@ static inline void *eina_list_data_get(const Eina_List *list) EINA_PURE EINA_WAR
 static inline unsigned int eina_list_count(const Eina_List *list) EINA_PURE;
 
 EAPI Eina_Iterator *eina_list_iterator_new(const Eina_List *list) EINA_MALLOC EINA_WARN_UNUSED_RESULT;
+EAPI Eina_Iterator *eina_list_iterator_reversed_new(const Eina_List *list) EINA_MALLOC EINA_WARN_UNUSED_RESULT;
 EAPI Eina_Accessor *eina_list_accessor_new(const Eina_List *list) EINA_MALLOC EINA_WARN_UNUSED_RESULT;
 
 /**
@@ -121,7 +129,7 @@ EAPI Eina_Accessor *eina_list_accessor_new(const Eina_List *list) EINA_MALLOC EI
  * data of each element of the list. @p l is an #Eina_List that is
  * used as counter.
  *
- * This macro can be used for freeing the data of alist, like in
+ * This macro can be used for freeing the data of a list, like in
  * the following example:
  *
  * @code
@@ -135,12 +143,58 @@ EAPI Eina_Accessor *eina_list_accessor_new(const Eina_List *list) EINA_MALLOC EI
  *
  * EINA_LIST_FOREACH(list, l, data)
  *   free(data);
+ * eina_list_free(list);
  * @endcode
  *
- * @warning do not delete list nodes, specially the current node, while
- *          iterating. If you wish to do so, use EINA_LIST_FOREACH_SAFE().
+ * @note this example is not optimal algorithm to release a list since
+ *    it will walk the list twice, but it serves as an example. For
+ *    optimized version use EINA_LIST_FREE().
+ *
+ * @warning do not delete list nodes, specially the current node,
+ *    while iterating. If you wish to do so, use
+ *    EINA_LIST_FOREACH_SAFE().
  */
 #define EINA_LIST_FOREACH(list, l, data) for (l = list, data = eina_list_data_get(l); l; l = eina_list_next(l), data = eina_list_data_get(l))
+
+/**
+ * @def EINA_LIST_REVERSE_FOREACH
+ * @brief Macro to iterate over a list easily in the reverse order.
+ *
+ * @param list The list to iterate over.
+ * @param l A list that is used as loop index.
+ * @param data The data.
+ *
+ * This macro allow the reversed iteration over @p list in an easy
+ * way. It iterates from the last element to the first one. @p data is
+ * the data of each element of the list. @p l is an #Eina_List that is
+ * used as counter.
+ *
+ * This macro can be used for freeing the data of a list, like in
+ * the following example:
+ *
+ * @code
+ * Eina_List *list;
+ * Eina_List *l;
+ * char       *data;
+ *
+ * // list is already filled,
+ * // its elements are just duplicated strings,
+ * // EINA_LIST_REVERSE_FOREACH will be used to free those strings
+ *
+ * EINA_LIST_REVERSE_FOREACH(list, l, data)
+ *   free(data);
+ * eina_list_free(list);
+ * @endcode
+ *
+ * @note this example is not optimal algorithm to release a list since
+ *    it will walk the list twice, but it serves as an example. For
+ *    optimized version use EINA_LIST_FREE()
+ *
+ * @warning do not delete list nodes, specially the current node,
+ *    while iterating. If you wish to do so, use
+ *    EINA_LIST_REVERSE_FOREACH_SAFE().
+ */
+#define EINA_LIST_REVERSE_FOREACH(list, l, data) for (l = eina_list_last(list), data = eina_list_data_get(l); l; l = eina_list_prev(l), data = eina_list_data_get(l))
 
 /**
  * @def EINA_LIST_FOREACH_SAFE
@@ -182,6 +236,67 @@ EAPI Eina_Accessor *eina_list_accessor_new(const Eina_List *list) EINA_MALLOC EI
  */
 #define EINA_LIST_FOREACH_SAFE(list, l, l_next, data) for (l = list, l_next = eina_list_next(l), data = eina_list_data_get(l); l; l = l_next, l_next = eina_list_next(l), data = eina_list_data_get(l))
 
+/**
+ * @def EINA_LIST_REVERSE_FOREACH_SAFE
+ * @brief Macro to iterate over a list easily in the reverse order,
+ * supporting deletion.
+ *
+ * @param list The list to iterate over.
+ * @param l A list that is used as loop index.
+ * @param l_prev A second list that is used as loop previous index.
+ * @param data The data.
+ *
+ * This macro allow the reversed iteration over @p list in an easy
+ * way. It iterates from the last element to the first one. @p data is
+ * the data of each element of the list. @p l is an #Eina_List that is
+ * used as counter.
+ *
+ * This is the safe version, which stores the previous pointer in @p
+ * l_prev before proceeding, so deletion of @b current node is
+ * safe. If you wish to remove anything else, remember to set @p
+ * l_prev accordingly.
+ *
+ * This macro can be used for freeing list nodes, like in
+ * the following example:
+ *
+ * @code
+ * Eina_List *list;
+ * Eina_List *l;
+ * Eina_List *l_prev;
+ * char       *data;
+ *
+ * // list is already filled,
+ * // its elements are just duplicated strings,
+ * // EINA_LIST_REVERSE_FOREACH_SAFE will be used to free elements that match "key".
+ *
+ * EINA_LIST_REVERSE_FOREACH_SAFE(list, l, l_prev, data)
+ *   if (strcmp(data, "key") == 0) {
+ *      free(data);
+ *      list = eina_list_remove_list(list, l);
+ *   }
+ * @endcode
+ */
+#define EINA_LIST_REVERSE_FOREACH_SAFE(list, l, l_prev, data) for (l = list, l_prev = eina_list_prev(l), data = eina_list_data_get(l); l; l = l_prev, l_prev = eina_list_prev(l), data = eina_list_data_get(l))
+
+/**
+ * Easy way to free the while list while being able to release its pointed data.
+ *
+ * @code
+ * Eina_List *list;
+ * char *data;
+ *
+ * // list is already filled,
+ * // its elements are just duplicated strings,
+ *
+ * EINA_LIST_FREE(list, data)
+ *   free(data);
+ * @endcode
+ *
+ * If you do not need to release node data then use eina_list_free().
+ *
+ * @see eina_list_free()
+ */
+#define EINA_LIST_FREE(list, data) for (data = list ? eina_list_data_get(list) : NULL; list; list = eina_list_remove_list(list, list), data = list ? eina_list_data_get(list) : NULL)
 
 #include "eina_inline_list.x"
 

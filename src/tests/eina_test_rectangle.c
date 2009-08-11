@@ -34,7 +34,9 @@ START_TEST(eina_rectangle_pool)
    int w;
    int h;
 
-   pool = eina_rectangle_pool_add(256, 256);
+   fail_if(!eina_rectangle_init());
+
+   pool = eina_rectangle_pool_new(256, 256);
    fail_if(pool == NULL);
 
    eina_rectangle_pool_data_set(pool, rects);
@@ -64,7 +66,9 @@ START_TEST(eina_rectangle_pool)
 
    fail_if(eina_rectangle_pool_request(pool, 16, 16) == NULL);
 
-   eina_rectangle_pool_delete(pool);
+   eina_rectangle_pool_free(pool);
+
+   eina_rectangle_shutdown();
 }
 END_TEST
 

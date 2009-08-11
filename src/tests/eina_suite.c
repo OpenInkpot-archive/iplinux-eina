@@ -16,6 +16,10 @@
  * if not, see <http://www.gnu.org/licenses/>.
  */
 
+#ifdef HAVE_CONFIG_H
+# include "config.h"
+#endif
+
 #include "eina_suite.h"
 #include "eina_mempool.h"
 
@@ -84,7 +88,7 @@ static void _mempool_init(void)
 
 static void _mempool_shutdown(void)
 {
-   eina_module_list_delete(_modules);
+   eina_module_list_flush(_modules);
    /* TODO delete the list */
    eina_mempool_shutdown();
 }

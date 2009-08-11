@@ -22,9 +22,23 @@
 #include "eina_types.h"
 #include "eina_iterator.h"
 #include "eina_accessor.h"
+#include <stddef.h>
 
 /**
- * @defgroup Inline_List_Group Inline List
+ * @addtogroup Eina_Data_Types_Group Data Types
+ *
+ * @{
+ */
+
+/**
+ * @addtogroup Eina_Containers_Group Containers
+ *
+ * @{
+ */
+
+/**
+ * @defgroup Eina_Inline_List_Group Inline List
+ *
  * @{
  */
 
@@ -37,7 +51,8 @@ struct _Eina_Inlist
 };
 
 #define EINA_INLIST Eina_Inlist __in_list
-#define EINA_INLIST_GET(Inlist) &((Inlist)->__in_list)
+#define EINA_INLIST_GET(Inlist) (&((Inlist)->__in_list))
+#define EINA_INLIST_CONTAINER_GET(ptr, type) ((type *) ((Eina_Inlist *) ptr - offsetof(type, __in_list)))
 
 EAPI Eina_Inlist * eina_inlist_append(Eina_Inlist *in_list, Eina_Inlist *in_item) EINA_ARG_NONNULL(2) EINA_WARN_UNUSED_RESULT;
 EAPI Eina_Inlist * eina_inlist_prepend(Eina_Inlist *in_list, Eina_Inlist *in_item) EINA_ARG_NONNULL(2) EINA_WARN_UNUSED_RESULT;
@@ -47,6 +62,7 @@ EAPI Eina_Inlist * eina_inlist_remove(Eina_Inlist *in_list, Eina_Inlist *in_item
 EAPI Eina_Inlist * eina_inlist_find(Eina_Inlist *in_list, Eina_Inlist *in_item) EINA_ARG_NONNULL(2) EINA_WARN_UNUSED_RESULT;
 EAPI Eina_Inlist * eina_inlist_promote(Eina_Inlist *list, Eina_Inlist *item) EINA_ARG_NONNULL(1, 2) EINA_WARN_UNUSED_RESULT;
 EAPI Eina_Inlist * eina_inlist_demote(Eina_Inlist *list, Eina_Inlist *item) EINA_ARG_NONNULL(1, 2) EINA_WARN_UNUSED_RESULT;
+EAPI unsigned int eina_inlist_count(const Eina_Inlist *list) EINA_WARN_UNUSED_RESULT;
 
 EAPI Eina_Iterator *eina_inlist_iterator_new(const Eina_Inlist *in_list) EINA_MALLOC EINA_WARN_UNUSED_RESULT;
 EAPI Eina_Accessor *eina_inlist_accessor_new(const Eina_Inlist *in_list) EINA_MALLOC EINA_WARN_UNUSED_RESULT;
@@ -54,6 +70,16 @@ EAPI Eina_Accessor *eina_inlist_accessor_new(const Eina_Inlist *in_list) EINA_MA
 #define EINA_INLIST_FOREACH(list, l) for (l = (void*)list; l; l = (void*)(l->__in_list.next))
 #define EINA_INLIST_REVERSE_FOREACH(list, l) for (l = (list ? (void*)(list->last) : NULL); l; l = (void*)(l->__in_list.prev))
 
-/** @} */
+/**
+ * @}
+ */
+
+/**
+ * @}
+ */
+
+/**
+ * @}
+ */
 
 #endif /*EINA_INLIST_H_*/

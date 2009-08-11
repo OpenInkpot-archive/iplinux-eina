@@ -79,18 +79,18 @@ static int _eina_counter_init_count = 0;
 static inline int
 _eina_counter_time_get(Eina_Nano_Time *tp)
 {
-#if defined(CLOCK_PROCESS_CPUTIME_ID)
+# if defined(CLOCK_PROCESS_CPUTIME_ID)
    return clock_gettime(CLOCK_PROCESS_CPUTIME_ID, tp);
-#elif defined(CLOCK_PROF)
+# elif defined(CLOCK_PROF)
    return clock_gettime(CLOCK_PROF, tp);
-#elif defined(CLOCK_REALTIME)
+# elif defined(CLOCK_REALTIME)
    return clock_gettime(CLOCK_REALTIME, tp);
-#else
+# else
    return gettimeofday(tp, NULL);
-#endif
+# endif
 }
 #else
-static int EINA_COUNTER_ERROR_WINDOWS = 0;
+static int EINA_ERROR_COUNTER_WINDOWS = 0;
 static LARGE_INTEGER _eina_counter_frequency;
 
 static inline int
@@ -147,19 +147,13 @@ _eina_counter_asiprintf(char *base, int *position, const char *format, ...)
  *============================================================================*/
 
 /**
- * @addtogroup Eina_Tools_Group Tools
- *
- * @{
- */
-
-/**
  * @addtogroup Eina_Counter_Group Counter
  *
  * @brief These functions allow you to get the time spent in a part of a code.
  *
  * The counter system must be initialized with eina_counter_init() and
  * shut down with eina_counter_shutdown(). The create a counter, use
- * eina_counter_add(). To free it, use eina_counter_delete().
+ * eina_counter_new(). To free it, use eina_counter_free().
  *
  * To time a part of a code, call eina_counter_start() just before it,
  * and eina_counter_stop() just after it. Each time you start to time
@@ -199,15 +193,15 @@ _eina_counter_asiprintf(char *base, int *position, const char *format, ...)
  *        return EXIT_FAILURE;
  *    }
  *
- *    counter = eina_counter_add("malloc");
+ *    counter = eina_counter_new("malloc");
  *
  *    eina_counter_start(counter);
  *    test_malloc();
  *    eina_counter_stop(counter, 1);
  *
- *    eina_counter_dump(counter, stdout);
+ *    eina_counter_dump(counter);
  *
- *    eina_counter_delete(counter);
+ *    eina_counter_free(counter);
  *    eina_counter_shutdown();
  *
  *    return EXIT_SUCCESS;
@@ -237,13 +231,20 @@ _eina_counter_asiprintf(char *base, int *position, const char *format, ...)
  *
  * @return 1 or greater on success, 0 on error.
  *
- * This function allocates the memory needed by the counter, which
- * means that it sets up the error module of Eina, and only on Windows
- * it initializes the high precision timer. It also registers the errors
- * #EINA_ERROR_OUT_OF_MEMORY and, if on Windows,
- * #EINA_COUNTER_ERROR_WINDOWS. It is also called by eina_init(). It
- * returns 0 on failure, otherwise it returns the number of times it
- * has already been called.
+ * This function sets up the error module of Eina and only on Windows,
+ * it initializes the high precision timer. It also registers, only on
+ * Windows, the error #EINA_ERROR_COUNTER_WINDOWS. It is also called
+ * by eina_init(). It returns 0 on failure, otherwise it returns the
+ * number of times it has already been called. See eina_error_init()
+ * for the documentation of the initialisation of the dependency
+ * modules.
+ *
+ * Once the counter module is not used anymore, then
+ * eina_counter_shutdown() must be called to shut down the counter
+ * module.
+ *
+ * @see eina_error_init()
+ * @see eina_init()
  */
 EAPI int
 eina_counter_init(void)
@@ -252,12 +253,17 @@ eina_counter_init(void)
 
    if (_eina_counter_init_count == 1)
      {
-	eina_error_init();
+        if (!eina_error_init())
+          {
+             fprintf(stderr, "Could not initialize eina error module.\n");
+             return 0;
+          }
 #ifdef _WIN32
+	EINA_ERROR_COUNTER_WINDOWS = eina_error_msg_register("Change your OS, you moron !");
         if (!QueryPerformanceFrequency(&_eina_counter_frequency))
           {
-             EINA_COUNTER_ERROR_WINDOWS = eina_error_msg_register("Change your OS, you moron !");
-             _eina_counter_init_count--;
+	     eina_error_set(EINA_ERROR_COUNTER_WINDOWS);
+             eina_error_shutdown();
              return 0;
           }
 #endif /* _WIN2 */
@@ -272,9 +278,13 @@ eina_counter_init(void)
  * @return 0 when the counter module is completely shut down, 1 or
  * greater otherwise.
  *
- * This function just shuts down the error module. It is also called by
- * eina_shutdown(). It returns 0 when it is called the same number of
- * times than eina_counter_init().
+ * This function shuts down the counter module set up by
+ * eina_counter_init(). It is called by eina_shutdown(). It
+ * returns 0 when it is called the same number of times than
+ * eina_counter_init().
+ *
+ * @see eina_error_shutdown()
+ * @see eina_shutdown()
  */
 EAPI int
 eina_counter_shutdown(void)
@@ -295,12 +305,15 @@ eina_counter_shutdown(void)
  * name. If @p name is @c NULL, the function returns @c NULL
  * immediatly. If memory allocation fails, @c NULL is returned and the
  * error is set to #EINA_ERROR_OUT_OF_MEMORY.
+ *
+ * Whe the new counter is not needed anymore, use eina_counter_free() to
+ * free the allocated memory.
  */
 EAPI Eina_Counter *
-eina_counter_add(const char *name)
+eina_counter_new(const char *name)
 {
    Eina_Counter *counter;
-   int length;
+   size_t length;
 
    EINA_SAFETY_ON_NULL_RETURN_VAL(name, NULL);
 
@@ -327,11 +340,11 @@ eina_counter_add(const char *name)
  *
  * This function remove the clock of @p counter from the used clocks
  * (see eina_counter_start()) and frees the memory allocated for
- * @p counter. If @p counter is @c NULL, the functions returns
+ * @p counter. If @p counter is @c NULL, the function returns
  * immediatly.
  */
 EAPI void
-eina_counter_delete(Eina_Counter *counter)
+eina_counter_free(Eina_Counter *counter)
 {
    EINA_SAFETY_ON_NULL_RETURN(counter);
 
@@ -472,10 +485,6 @@ eina_counter_dump(Eina_Counter *counter)
 
    return result;
 }
-
-/**
- * @}
- */
 
 /**
  * @}

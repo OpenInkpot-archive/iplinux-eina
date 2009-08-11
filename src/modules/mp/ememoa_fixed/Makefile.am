@@ -1,18 +1,17 @@
-MAINTAINERCLEANFILES = \
-Makefile.in
+MAINTAINERCLEANFILES = Makefile.in
 
 AM_CPPFLAGS = \
 -I. \
 -I$(top_srcdir)/src/include \
 -I$(top_builddir)/src/include \
+@EINA_CPPFLAGS@ \
 @EINA_CFLAGS@ \
 @EMEMOA_CFLAGS@
 
-if EINA_ENABLE_EMEMOA
-
+if EINA_BUILD_EMEMOA_FIXED
 if !EINA_STATIC_BUILD_EMEMOA_FIXED
 
-controllerdir = $(libdir)/eina/mp/
+controllerdir = $(libdir)/eina/mp
 controller_LTLIBRARIES = eina_ememoa_fixed.la
 
 eina_ememoa_fixed_la_SOURCES = \
@@ -23,7 +22,6 @@ eina_ememoa_fixed_la_LDFLAGS      = -no-undefined @lt_enable_auto_import@ -modul
 eina_ememoa_fixed_la_LIBTOOLFLAGS = --tag=disable-static
 
 endif
-
 endif
 
 clean-local:

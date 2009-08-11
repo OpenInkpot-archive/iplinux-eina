@@ -21,9 +21,14 @@
 # include "config.h"
 #endif
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdint.h>
+#ifdef _MSC_VER
+# include <Evil.h>
+#else
+# include <stdint.h>
+#endif
 
 #include "eina_hash.h"
 #include "eina_rbtree.h"
@@ -45,10 +50,13 @@
        EINA_MAGIC_FAIL(d, EINA_MAGIC_HASH);				\
   } while(0)
 
-#define EINA_MAGIC_CHECK_HASH_ITERATOR(d)				\
+#define EINA_MAGIC_CHECK_HASH_ITERATOR(d, ...)				\
   do {									\
      if (!EINA_MAGIC_CHECK(d, EINA_MAGIC_HASH_ITERATOR))		\
-       EINA_MAGIC_FAIL(d, EINA_MAGIC_HASH_ITERATOR);			\
+     {									\
+          EINA_MAGIC_FAIL(d, EINA_MAGIC_HASH_ITERATOR);			\
+          return __VA_ARGS__;							\
+     }									\
   } while(0)
 
 #define EINA_HASH_BUCKET_SIZE 8
@@ -75,7 +83,7 @@ struct _Eina_Hash
 
    int population;
 
-   EINA_MAGIC;
+   EINA_MAGIC
 };
 
 struct _Eina_Hash_Head
@@ -117,7 +125,7 @@ struct _Eina_Iterator_Hash
 
    int index;
 
-   EINA_MAGIC;
+   EINA_MAGIC
 };
 
 struct _Eina_Hash_Each
@@ -273,7 +281,7 @@ _eina_hash_rbtree_each(__UNUSED__ const Eina_Rbtree *container, const Eina_Hash_
    Eina_Bool found = EINA_TRUE;
 
    it = eina_rbtree_iterator_prefix(eh->head);
-   while (eina_iterator_next(it, (void**) &el))
+   EINA_ITERATOR_FOREACH(it, el)
      {
 	if (el->tuple.data == data->data)
 	  {
@@ -412,7 +420,7 @@ _eina_hash_del_by_key(Eina_Hash *hash, const void *key, const void *data)
    if (!key) return EINA_FALSE;
    if (!hash->buckets) return EINA_FALSE;
 
-   key_length = hash->key_length_cb(key);
+   key_length = hash->key_length_cb ? hash->key_length_cb(key) : 0;
    key_hash = hash->key_hash_cb(key, key_length);
    return _eina_hash_del_by_key_hash(hash, key, key_length, key_hash, data);
 }
@@ -421,7 +429,7 @@ static unsigned int
 _eina_string_key_length(const char *key)
 {
    if (!key) return 0;
-   return strlen(key) + 1;
+   return (int)strlen(key) + 1;
 }
 
 static int
@@ -429,6 +437,13 @@ _eina_string_key_cmp(const char *key1, __UNUSED__ int key1_length,
 		     const char *key2, __UNUSED__ int key2_length)
 {
    return strcmp(key1, key2);
+}
+
+static int
+_eina_stringshared_key_cmp(const char *key1, __UNUSED__ int key1_length,
+			   const char *key2, __UNUSED__ int key2_length)
+{
+   return key1 - key2;
 }
 
 static unsigned int
@@ -441,11 +456,7 @@ static int
 _eina_int32_key_cmp(const uint32_t *key1, __UNUSED__ int key1_length,
 		    const uint32_t *key2, __UNUSED__ int key2_length)
 {
-  if (*key1 > *key2)
-    return 1;
-  if (*key1 < *key2)
-    return -1;
-  return 0;
+   return *key1 - *key2;
 }
 
 static unsigned int
@@ -458,13 +469,8 @@ static int
 _eina_int64_key_cmp(const uint64_t *key1, __UNUSED__ int key1_length,
 		    const uint64_t *key2, __UNUSED__ int key2_length)
 {
-  if (*key1 > *key2)
-    return 1;
-  if (*key1 < *key2)
-    return -1;
-  return 0;
+   return *key1 - *key2;
 }
-
 
 static Eina_Bool
 _eina_foreach_cb(const Eina_Hash *hash, Eina_Hash_Tuple *data, Eina_Hash_Foreach_Data *fdata)
@@ -477,7 +483,7 @@ _eina_hash_iterator_data_get_content(Eina_Iterator_Hash *it)
 {
    Eina_Hash_El *stuff;
 
-   EINA_MAGIC_CHECK_HASH_ITERATOR(it);
+   EINA_MAGIC_CHECK_HASH_ITERATOR(it, NULL);
 
    stuff = it->el;
 
@@ -490,7 +496,7 @@ _eina_hash_iterator_key_get_content(Eina_Iterator_Hash *it)
 {
    Eina_Hash_El *stuff;
 
-   EINA_MAGIC_CHECK_HASH_ITERATOR(it);
+   EINA_MAGIC_CHECK_HASH_ITERATOR(it, NULL);
 
    stuff = it->el;
 
@@ -503,7 +509,7 @@ _eina_hash_iterator_tuple_get_content(Eina_Iterator_Hash *it)
 {
    Eina_Hash_El *stuff;
 
-   EINA_MAGIC_CHECK_HASH_ITERATOR(it);
+   EINA_MAGIC_CHECK_HASH_ITERATOR(it, NULL);
 
    stuff = it->el;
 
@@ -581,7 +587,7 @@ _eina_hash_iterator_next(Eina_Iterator_Hash *it, void **data)
 static void *
 _eina_hash_iterator_get_container(Eina_Iterator_Hash *it)
 {
-   EINA_MAGIC_CHECK_HASH_ITERATOR(it);
+   EINA_MAGIC_CHECK_HASH_ITERATOR(it, NULL);
    return (void *) it->hash;
 }
 
@@ -605,18 +611,6 @@ _eina_hash_iterator_free(Eina_Iterator_Hash *it)
 /*============================================================================*
  *                                   API                                      *
  *============================================================================*/
-
-/**
- * @addtogroup Eina_Data_Types_Group Data Types
- *
- * @{
- */
-
-/**
- * @addtogroup Eina_Containers_Group Containers
- *
- * @{
- */
 
 /**
  * @addtogroup Eina_Hash_Group Hash Table
@@ -648,16 +642,26 @@ _eina_hash_iterator_free(Eina_Iterator_Hash *it)
  *
  * @return 1 or greater on success, 0 on error.
  *
- * This function just sets up the error module or Eina. It is also
- * called by eina_init(). It returns 0 on failure, otherwise it
- * returns the number of times eina_error_init() has already been
- * called.
+ * This function sets up the error module of Eina. It is also called
+ * by eina_init(). It returns 0 on failure, otherwise it returns the
+ * number of times it has already been called. See eina_error_init()
+ * for the documentation of the initialisation of the dependency
+ * module.
+ *
+ * When no more Eina hash tables are used, call eina_hash_shutdown()
+ * to shut down the array module.
+ *
+ * @see eina_error_init()
  */
 EAPI int
 eina_hash_init(void)
 {
    if (!_eina_hash_init_count)
-     eina_error_init();
+     if (!eina_error_init())
+       {
+	  fprintf(stderr, "Could not initialize eina error module\n");
+	  return 0;
+       }
 
    return ++_eina_hash_init_count;
 }
@@ -692,7 +696,6 @@ eina_hash_new(Eina_Key_Length key_length_cb,
    Eina_Hash *new;
 
    eina_error_set(0);
-   EINA_SAFETY_ON_NULL_RETURN_VAL(key_length_cb, NULL);
    EINA_SAFETY_ON_NULL_RETURN_VAL(key_cmp_cb, NULL);
    EINA_SAFETY_ON_NULL_RETURN_VAL(key_hash_cb, NULL);
    EINA_SAFETY_ON_TRUE_RETURN_VAL(buckets_power_size < 3, NULL);
@@ -788,6 +791,16 @@ eina_hash_pointer_new(Eina_Free_Cb data_free_cb)
 #endif
 }
 
+EAPI Eina_Hash *
+eina_hash_stringshared_new(Eina_Free_Cb data_free_cb)
+{
+   return eina_hash_new(NULL,
+			EINA_KEY_CMP(_eina_stringshared_key_cmp),
+			EINA_KEY_HASH(eina_hash_superfast),
+			data_free_cb,
+			EINA_HASH_BUCKET_SIZE);
+}
+
 /**
  * Retrieves the number of buckets available in the given hash table.
  * @param hash The given hash table.
@@ -829,8 +842,11 @@ eina_hash_free(Eina_Hash *hash)
    EINA_SAFETY_ON_NULL_RETURN(hash);
 
    if (hash->buckets)
-     for (i = 0; i < hash->size; i++)
-       eina_rbtree_delete(hash->buckets[i], EINA_RBTREE_FREE_CB(_eina_hash_head_free), hash);
+     {
+	for (i = 0; i < hash->size; i++)
+	  eina_rbtree_delete(hash->buckets[i], EINA_RBTREE_FREE_CB(_eina_hash_head_free), hash);
+	free(hash->buckets);
+     }
    free(hash);
 }
 
@@ -926,12 +942,11 @@ eina_hash_add(Eina_Hash *hash, const void *key, const void *data)
 
    EINA_MAGIC_CHECK_HASH(hash);
    EINA_SAFETY_ON_NULL_RETURN_VAL(hash, EINA_FALSE);
-   EINA_SAFETY_ON_NULL_RETURN_VAL(hash->key_length_cb, EINA_FALSE);
    EINA_SAFETY_ON_NULL_RETURN_VAL(hash->key_hash_cb, EINA_FALSE);
    EINA_SAFETY_ON_NULL_RETURN_VAL(key, EINA_FALSE);
    EINA_SAFETY_ON_NULL_RETURN_VAL(data, EINA_FALSE);
 
-   key_length = hash->key_length_cb(key);
+   key_length = hash->key_length_cb ? hash->key_length_cb(key) : 0;
    key_hash = hash->key_hash_cb(key, key_length);
 
    return eina_hash_add_by_hash(hash, key, key_length, key_hash, data);
@@ -965,12 +980,11 @@ eina_hash_direct_add(Eina_Hash *hash, const void *key, const void *data)
 
    EINA_MAGIC_CHECK_HASH(hash);
    EINA_SAFETY_ON_NULL_RETURN_VAL(hash, EINA_FALSE);
-   EINA_SAFETY_ON_NULL_RETURN_VAL(hash->key_length_cb, EINA_FALSE);
    EINA_SAFETY_ON_NULL_RETURN_VAL(hash->key_hash_cb, EINA_FALSE);
    EINA_SAFETY_ON_NULL_RETURN_VAL(key, EINA_FALSE);
    EINA_SAFETY_ON_NULL_RETURN_VAL(data, EINA_FALSE);
 
-   key_length = hash->key_length_cb(key);
+   key_length = hash->key_length_cb ? hash->key_length_cb(key) : 0;
    key_hash = hash->key_hash_cb(key, key_length);
 
    return eina_hash_direct_add_by_hash(hash, key, key_length, key_hash, data);
@@ -1152,11 +1166,10 @@ eina_hash_find(const Eina_Hash *hash, const void *key)
    if (!hash) return NULL;
 
    EINA_MAGIC_CHECK_HASH(hash);
-   EINA_SAFETY_ON_NULL_RETURN_VAL(hash->key_length_cb, NULL);
    EINA_SAFETY_ON_NULL_RETURN_VAL(hash->key_hash_cb, NULL);
    EINA_SAFETY_ON_NULL_RETURN_VAL(key, NULL);
 
-   key_length = hash->key_length_cb(key);
+   key_length = hash->key_length_cb ? hash->key_length_cb(key) : 0;
    hash_num = hash->key_hash_cb(key, key_length);
 
    return eina_hash_find_by_hash(hash, key, key_length, hash_num);
@@ -1217,12 +1230,11 @@ eina_hash_modify(Eina_Hash *hash, const void *key, const void *data)
 
    EINA_MAGIC_CHECK_HASH(hash);
    EINA_SAFETY_ON_NULL_RETURN_VAL(hash, NULL);
-   EINA_SAFETY_ON_NULL_RETURN_VAL(hash->key_length_cb, NULL);
    EINA_SAFETY_ON_NULL_RETURN_VAL(hash->key_hash_cb, NULL);
    EINA_SAFETY_ON_NULL_RETURN_VAL(key, NULL);
    EINA_SAFETY_ON_NULL_RETURN_VAL(data, NULL);
 
-   key_length = hash->key_length_cb(key);
+   key_length = hash->key_length_cb ? hash->key_length_cb(key) : 0;
    hash_num = hash->key_hash_cb(key, key_length);
 
    return eina_hash_modify_by_hash(hash, key, key_length, hash_num, data);
@@ -1286,6 +1298,25 @@ eina_hash_foreach(const Eina_Hash *hash,
    eina_iterator_free(it);
 }
 
+/**
+ * @brief Returned a new iterator asociated to hash data.
+ *
+ * @param hash The hash.
+ * @return A new iterator.
+ *
+ * This function returns a newly allocated iterator associated to @p
+ * hash. If @p hash is not populated, this function still returns a
+ * valid iterator that will always return false on
+ * eina_iterator_next(), thus keeping API sane.
+ *
+ * If the memory can not be allocated, NULL is returned and
+ * #EINA_ERROR_OUT_OF_MEMORY is set. Otherwise, a valid iterator is
+ * returned.
+ *
+ * @warning if the hash structure changes then the iterator becomes
+ *    invalid! That is, if you add or remove items this iterator
+ *    behavior is undefined and your program may crash!
+ */
 EAPI Eina_Iterator *
 eina_hash_iterator_data_new(const Eina_Hash *hash)
 {
@@ -1294,8 +1325,12 @@ eina_hash_iterator_data_new(const Eina_Hash *hash)
    EINA_MAGIC_CHECK_HASH(hash);
    EINA_SAFETY_ON_NULL_RETURN_VAL(hash, NULL);
 
+   eina_error_set(0);
    it = calloc(1, sizeof (Eina_Iterator_Hash));
-   if (!it) return NULL;
+   if (!it) {
+      eina_error_set(EINA_ERROR_OUT_OF_MEMORY);
+      return NULL;
+   }
 
    it->hash = hash;
    it->get_content = FUNC_ITERATOR_GET_CONTENT(_eina_hash_iterator_data_get_content);
@@ -1310,6 +1345,25 @@ eina_hash_iterator_data_new(const Eina_Hash *hash)
    return &it->iterator;
 }
 
+/**
+ * @brief Returned a new iterator asociated to hash keys.
+ *
+ * @param hash The hash.
+ * @return A new iterator.
+ *
+ * This function returns a newly allocated iterator associated to @p
+ * hash. If @p hash is not populated, this function still returns a
+ * valid iterator that will always return false on
+ * eina_iterator_next(), thus keeping API sane.
+ *
+ * If the memory can not be allocated, NULL is returned and
+ * #EINA_ERROR_OUT_OF_MEMORY is set. Otherwise, a valid iterator is
+ * returned.
+ *
+ * @warning if the hash structure changes then the iterator becomes
+ *    invalid! That is, if you add or remove items this iterator
+ *    behavior is undefined and your program may crash!
+ */
 EAPI Eina_Iterator *
 eina_hash_iterator_key_new(const Eina_Hash *hash)
 {
@@ -1318,8 +1372,12 @@ eina_hash_iterator_key_new(const Eina_Hash *hash)
    EINA_MAGIC_CHECK_HASH(hash);
    EINA_SAFETY_ON_NULL_RETURN_VAL(hash, NULL);
 
+   eina_error_set(0);
    it = calloc(1, sizeof (Eina_Iterator_Hash));
-   if (!it) return NULL;
+   if (!it) {
+      eina_error_set(EINA_ERROR_OUT_OF_MEMORY);
+      return NULL;
+   }
 
    it->hash = hash;
    it->get_content = FUNC_ITERATOR_GET_CONTENT(_eina_hash_iterator_key_get_content);
@@ -1334,6 +1392,28 @@ eina_hash_iterator_key_new(const Eina_Hash *hash)
    return &it->iterator;
 }
 
+/**
+ * @brief Returned a new iterator asociated to hash keys and data.
+ *
+ * @param hash The hash.
+ * @return A new iterator.
+ *
+ * This function returns a newly allocated iterator associated to @p
+ * hash. If @p hash is not populated, this function still returns a
+ * valid iterator that will always return false on
+ * eina_iterator_next(), thus keeping API sane.
+ *
+ * If the memory can not be allocated, NULL is returned and
+ * #EINA_ERROR_OUT_OF_MEMORY is set. Otherwise, a valid iterator is
+ * returned.
+ *
+ * @note iterator data will provide values as Eina_Hash_Tuple that should not
+ *   be modified!
+ *
+ * @warning if the hash structure changes then the iterator becomes
+ *    invalid! That is, if you add or remove items this iterator
+ *    behavior is undefined and your program may crash!
+ */
 EAPI Eina_Iterator *
 eina_hash_iterator_tuple_new(const Eina_Hash *hash)
 {
@@ -1342,8 +1422,12 @@ eina_hash_iterator_tuple_new(const Eina_Hash *hash)
    EINA_MAGIC_CHECK_HASH(hash);
    EINA_SAFETY_ON_NULL_RETURN_VAL(hash, NULL);
 
+   eina_error_set(0);
    it = calloc(1, sizeof (Eina_Iterator_Hash));
-   if (!it) return NULL;
+   if (!it) {
+      eina_error_set(EINA_ERROR_OUT_OF_MEMORY);
+      return NULL;
+   }
 
    it->hash = hash;
    it->get_content = FUNC_ITERATOR_GET_CONTENT(_eina_hash_iterator_tuple_get_content);
@@ -1411,14 +1495,6 @@ eina_hash_superfast(const char *key, int len)
 
    return hash;
 }
-
-/**
- * @}
- */
-
-/**
- * @}
- */
 
 /**
  * @}

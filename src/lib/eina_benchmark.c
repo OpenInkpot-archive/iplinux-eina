@@ -32,6 +32,23 @@
 #include <stdio.h>
 #include <string.h>
 
+#ifdef HAVE_ALLOCA_H
+# include <alloca.h>
+#elif defined __GNUC__
+# define alloca __builtin_alloca
+#elif defined _AIX
+# define alloca __alloca
+#elif defined _MSC_VER
+# include <malloc.h>
+# define alloca _alloca
+#else
+# include <stddef.h>
+# ifdef  __cplusplus
+extern "C"
+# endif
+void *alloca (size_t);
+#endif
+
 #include "eina_benchmark.h"
 #include "eina_inlist.h"
 #include "eina_counter.h"
@@ -43,6 +60,9 @@
 /**
  * @cond LOCAL
  */
+
+#define EINA_BENCHMARK_FILENAME_MASK "bench_%s_%s.gnuplot"
+#define EINA_BENCHMARK_DATA_MASK "bench_%s_%s.%s.data"
 
 typedef struct _Eina_Run Eina_Run;
 struct _Eina_Run
@@ -79,12 +99,6 @@ static int _eina_benchmark_count = 0;
  *============================================================================*/
 
 /**
- * @addtogroup Eina_Tools_Group Tools
- *
- * @{
- */
-
-/**
  * @addtogroup Eina_Benchmark_Group Benchmark
  *
  * These functions allow you to add benchmark framework in a project
@@ -118,8 +132,18 @@ static int _eina_benchmark_count = 0;
  *
  * This function sets up the error, array and counter modules or
  * Eina. It is also called by eina_init(). It returns 0 on failure,
- * otherwise it returns the number of times eina_error_init() has
- * already been called.
+ * otherwise it returns the number of times it has already been
+ * called. See eina_error_init(), eina_array_init() and
+ * eina_counter_init() for the documentation of the initialisation of
+ * the dependency modules.
+ *
+ * When no more Eina benchmarks are used, call
+ * eina_benchmark_shutdown() to shut down the benchmark module.
+ *
+ * @see eina_error_init()
+ * @see eina_array_init()
+ * @see eina_counter_init()
+ * @see eina_init()
  */
 EAPI int
 eina_benchmark_init(void)
@@ -128,11 +152,29 @@ eina_benchmark_init(void)
 
    if (_eina_benchmark_count > 1) return _eina_benchmark_count;
 
-   eina_error_init();
-   eina_array_init();
-   eina_counter_init();
+   if (!eina_error_init())
+     {
+        fprintf(stderr, "Could not initialize eina error module.\n");
+        return 0;
+     }
+   if (!eina_array_init())
+     {
+        EINA_ERROR_PERR("Could not initialize eina array module.\n");
+        goto array_init_error;
+     }
+   if (!eina_counter_init())
+     {
+        EINA_ERROR_PERR("Could not initialize eina counter module.\n");
+        goto counter_init_error;
+     }
 
    return _eina_benchmark_count;
+
+ counter_init_error:
+   eina_array_shutdown();
+ array_init_error:
+   eina_error_shutdown();
+   return 0;
 }
 
 /**
@@ -143,7 +185,12 @@ eina_benchmark_init(void)
  *
  * This function shut down the error, array and counter modules set up
  * by eina_array_init(). It is also called by eina_shutdown(). It returns
- * 0 when it is called the same number of times than eina_error_init().
+ * 0 when it is called the same number of times than eina_benchmark_init().
+ *
+ * @see eina_error_shutdown()
+ * @see eina_array_shutdown()
+ * @see eina_counter_shutdown()
+ * @see eina_shutdown()
  */
 EAPI int
 eina_benchmark_shutdown(void)
@@ -172,6 +219,9 @@ eina_benchmark_shutdown(void)
  * This function return a valid benchmark on success, or @c NULL if
  * memory allocation fails. In that case, the error is set to
  * #EINA_ERROR_OUT_OF_MEMORY.
+ *
+ * When the new module is not needed anymore, use
+ * eina_benchmark_free() to free the allocated memory.
  */
 EAPI Eina_Benchmark *
 eina_benchmark_new(const char *name, const char *run)
@@ -291,8 +341,6 @@ eina_benchmark_register(Eina_Benchmark *bench, const char *name, Eina_Benchmark_
  * immediatly. Otherwise, it returns the list of the names of each
  * test.
  */
-#define EINA_BENCHMARK_FILENAME_MASK "bench_%s_%s.gnuplot"
-#define EINA_BENCHMARK_DATA_MASK "bench_%s_%s.%s.data"
 EAPI Eina_Array *
 eina_benchmark_run(Eina_Benchmark *bench)
 {
@@ -302,7 +350,7 @@ eina_benchmark_run(Eina_Benchmark *bench)
    Eina_Run *run;
    char *buffer;
    Eina_Bool first = EINA_FALSE;
-   int length;
+   size_t length;
 
    if (!bench) return NULL;
 
@@ -343,7 +391,7 @@ eina_benchmark_run(Eina_Benchmark *bench)
      {
 	Eina_Counter *counter;
 	char *result;
-	int tmp;
+	size_t tmp;
 	int i;
 
 	tmp = strlen(EINA_BENCHMARK_DATA_MASK) + strlen(bench->name) + strlen(bench->run) + strlen(run->name);
@@ -360,7 +408,7 @@ eina_benchmark_run(Eina_Benchmark *bench)
 
 	eina_array_push(ea, strdup(buffer));
 
-	counter = eina_counter_add(run->name);
+	counter = eina_counter_new(run->name);
 
 	for (i = run->start; i < run->end; i += run->step)
 	  {
@@ -379,7 +427,7 @@ eina_benchmark_run(Eina_Benchmark *bench)
 	     free(result);
 	  }
 
-	eina_counter_delete(counter);
+	eina_counter_free(counter);
 
 	fclose(current_data);
 
@@ -397,10 +445,6 @@ eina_benchmark_run(Eina_Benchmark *bench)
 
    return ea;
 }
-
-/**
- * @}
- */
 
 /**
  * @}

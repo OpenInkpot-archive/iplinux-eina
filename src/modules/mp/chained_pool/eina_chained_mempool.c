@@ -26,10 +26,15 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef EFL_HAVE_PTHREAD
+#include <pthread.h>
+#endif
+
 #include "eina_inlist.h"
 #include "eina_error.h"
 #include "eina_module.h"
 #include "eina_mempool.h"
+#include "eina_trash.h"
 
 #include "eina_private.h"
 
@@ -41,13 +46,16 @@ struct _Chained_Mempool
    int item_size;
    int pool_size;
    int usage;
+#ifdef EFL_HAVE_PTHREAD
+   pthread_mutex_t mutex;
+#endif
 };
 
 typedef struct _Chained_Pool Chained_Pool;
 struct _Chained_Pool
 {
    EINA_INLIST;
-   void *base;
+   Eina_Trash *base;
    int usage;
 };
 
@@ -55,20 +63,16 @@ static inline Chained_Pool *
 _eina_chained_mp_pool_new(Chained_Mempool *pool)
 {
    Chained_Pool *p;
-   void **ptr;
+   unsigned char *ptr;
    int item_alloc, i;
 
    item_alloc = ((pool->item_size + sizeof(void *) - 1) / sizeof(void *)) * sizeof(void *);
    p = malloc(sizeof(Chained_Pool) + (pool->pool_size * item_alloc));
-   ptr = (void **)(((unsigned char *)p) + sizeof(Chained_Pool));
+   ptr = (unsigned char *) (p + 1);
    p->usage = 0;
-   p->base = ptr;
-   for (i = 0; i < pool->pool_size - 1; i++)
-     {
-	*ptr = (void **)(((unsigned char *)ptr) + item_alloc);
-	ptr = *ptr;
-     }
-   *ptr = NULL;
+   p->base = NULL;
+   for (i = 0; i < pool->pool_size; ++i, ptr += item_alloc)
+     eina_trash_push(&p->base, ptr);
    return p;
 }
 
@@ -85,6 +89,10 @@ eina_chained_mempool_malloc(void *data, __UNUSED__ unsigned int size)
    Chained_Pool *p = NULL;
    void *mem;
 
+#ifdef EFL_HAVE_PTHREAD
+   pthread_mutex_lock(&pool->mutex);
+#endif
+
    // look 4 pool from 2nd bucket on
    EINA_INLIST_FOREACH(pool->first, p)
      {
@@ -95,22 +103,33 @@ eina_chained_mempool_malloc(void *data, __UNUSED__ unsigned int size)
 	     break;
 	  }
      }
+
    // we have reached the end of the list - no free pools
    if (!p)
      {
 	p = _eina_chained_mp_pool_new(pool);
-	if (!p) return NULL;
+	if (!p)
+	  {
+#ifdef EFL_HAVE_PTHREAD
+	     pthread_mutex_unlock(&pool->mutex);
+#endif
+	     return NULL;
+	  }
 	pool->first = eina_inlist_prepend(pool->first, EINA_INLIST_GET(p));
      }
-   // this points to the next free block - so take it
-   mem = p->base;
-   // base now points to the next free block
-   p->base = *((void **)mem);
+   // Request a free pointer
+   mem = eina_trash_pop(&p->base);
    // move to end - it just filled up
    if (!p->base)
-     pool->first = eina_inlist_demote(pool->first, EINA_INLIST_GET(p));
+     {
+	pool->first = eina_inlist_demote(pool->first, EINA_INLIST_GET(p));
+     }
    p->usage++;
    pool->usage++;
+
+#ifdef EFL_HAVE_PTHREAD
+   pthread_mutex_unlock(&pool->mutex);
+#endif
    return mem;
 }
 
@@ -126,6 +145,10 @@ eina_chained_mempool_free(void *data, void *ptr)
    psize = item_alloc * pool->pool_size;
    // look 4 pool
 
+#ifdef EFL_HAVE_PTHREAD
+   pthread_mutex_lock(&pool->mutex);
+#endif
+
    EINA_INLIST_FOREACH(pool->first, p)
      {
 	// pool mem base
@@ -134,9 +157,8 @@ eina_chained_mempool_free(void *data, void *ptr)
 	if ((ptr >= pmem) && ((unsigned char *)ptr < (((unsigned char *)pmem) + psize)))
 	  {
 	     // freed node points to prev free node
-	     *((void **)ptr) = p->base;
+	     eina_trash_push(&p->base, ptr);
 	     // next free node is now the one we freed
-	     p->base = ptr;
 	     p->usage--;
 	     pool->usage--;
 	     if (p->usage == 0)
@@ -153,6 +175,10 @@ eina_chained_mempool_free(void *data, void *ptr)
 	     break;
 	  }
      }
+
+#ifdef EFL_HAVE_PTHREAD
+   pthread_mutex_unlock(&pool->mutex);
+#endif
 }
 
 static void*
@@ -181,6 +207,10 @@ eina_chained_mempool_init(const char *context, __UNUSED__ const char *option, va
 	memcpy((char*) mp->name, context, length);
      }
 
+#ifdef EFL_HAVE_PTHREAD
+   pthread_mutex_init(&mp->mutex, NULL);
+#endif
+
    return mp;
 }
 
@@ -203,6 +233,10 @@ eina_chained_mempool_shutdown(void *data)
 	mp->first = eina_inlist_remove(mp->first, mp->first);
 	_eina_chained_mp_pool_free(p);
      }
+
+#ifdef EFL_HAVE_PTHREAD
+   pthread_mutex_destroy(&mp->mutex);
+#endif
 
    free(mp);
 }

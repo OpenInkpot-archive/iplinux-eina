@@ -6,8 +6,7 @@ AM_CPPFLAGS = \
 -DPACKAGE_BIN_DIR=\"$(bindir)\" \
 -DPACKAGE_LIB_DIR=\"$(libdir)\" \
 -DPACKAGE_DATA_DIR=\"$(datadir)/$(PACKAGE)\" \
-@EINA_CFLAGS@ \
--fno-strict-aliasing
+@EINA_CPPFLAGS@
 
 lib_LTLIBRARIES = libeina.la
 
@@ -31,7 +30,9 @@ eina_convert.c \
 eina_rbtree.c \
 eina_benchmark.c \
 eina_rectangle.c \
-eina_stringshare.c
+eina_stringshare.c \
+eina_cpu.c \
+eina_tiler.c
 
 if EINA_STATIC_BUILD_CHAINED_POOL
 
@@ -51,14 +52,21 @@ libeina_la_SOURCES += $(top_srcdir)/src/modules/mp/ememoa_unknown/eina_ememoa_un
 
 endif
 
+if EINA_STATIC_BUILD_FIXED_BITMAP
+
+libeina_la_SOURCES += $(top_srcdir)/src/modules/mp/fixed_bitmap/eina_fixed_bitmap.c
+
+endif
+
 if EINA_STATIC_BUILD_PASS_THROUGH
 
-libeina_la_SOURCES += $(top_srcdir)/src/modules/mp/pass_through/pass_through.c
+libeina_la_SOURCES += $(top_srcdir)/src/modules/mp/pass_through/eina_pass_through.c
 
 endif
 
 libeina_la_LIBADD = @EINA_LIBS@ @dlopen_libs@
-libeina_la_LDFLAGS = -no-undefined @lt_enable_auto_import@ -version-info @version_info@
+libeina_la_LDFLAGS = -no-undefined @lt_enable_auto_import@ -version-info @version_info@ @release_info@
+libeina_la_CFLAGS = @EINA_CFLAGS@
 
 clean-local:
 	rm -rf *.gcno

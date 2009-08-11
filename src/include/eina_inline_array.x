@@ -52,9 +52,10 @@ EAPI Eina_Bool eina_array_grow(Eina_Array *array);
  *
  * This function appends @p data to @p array. For performance
  * reasons, there is no check of @p array. If it is @c NULL or
- * invalid, the program may crash. if an allocation is necessary and
- * fails, #EINA_FALSE is returned and #EINA_ERROR_OUT_OF_MEMORY is
- * set. Otherwise, #EINA_TRUE is returned.
+ * invalid, the program may crash. If @p data is @c NULL, or if an
+ * allocation is necessary and fails, #EINA_FALSE is returned and
+ * #EINA_ERROR_OUT_OF_MEMORY is set. Otherwise, #EINA_TRUE is
+ * returned.
  */
 static inline Eina_Bool
 eina_array_push(Eina_Array *array, const void *data)
@@ -74,10 +75,11 @@ eina_array_push(Eina_Array *array, const void *data)
  * @param array The array.
  * @return The retrieved data.
  *
- * This function removes the last data of @p array and returns it. For
- * performance reasons, there is no check of @p array. If it is
- * @c NULL or invalid, the program may crash. If the count member is
- * less or equal than 0, @c NULL is returned.
+ * This function removes the last data of @p array, decreases the count
+ * of @p array and returns the data. For performance reasons, there
+ * is no check of @p array. If it is @c NULL or invalid, the program
+ * may crash. If the count member is less or equal than 0, @c NULL is
+ * returned.
  */
 static inline void *
 eina_array_pop(Eina_Array *array)
@@ -107,8 +109,8 @@ eina_array_data_get(const Eina_Array *array, unsigned int index)
  * @brief Return the data at a given position in an array.
  *
  * @param array The array.
- * @param index The potition of the data to retrieve.
- * @return The retrieved data.
+ * @param index The potition of the data to set.
+ * @param data The data to set.
  *
  * This function returns the data at the position @p index in @p
  * array. For performance reasons, there is no check of @p array or @p
@@ -121,7 +123,7 @@ eina_array_data_set(const Eina_Array *array, unsigned int index, const void *dat
 }
 
 /**
- * @brief Return the number of elements in the array.
+ * @brief Return the number of elements in an array.
  *
  * @param array The array.
  * @return The number of elements.

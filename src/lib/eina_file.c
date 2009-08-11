@@ -71,13 +71,7 @@ void *alloca (size_t);
  *============================================================================*/
 
 /**
- * @addtogroup Eina_Tools_Group Tools
- *
- * @{
- */
-
-/**
- * @addtogroup Eina_File_Group Memory File
+ * @addtogroup Eina_File_Group File
  *
  * @brief Functions to traverse directories and split paths.
  *
@@ -115,13 +109,13 @@ void *alloca (size_t);
 EAPI Eina_Bool
 eina_file_dir_list(const char *dir, Eina_Bool recursive, Eina_File_Dir_List_Cb cb, void *data)
 {
-        EINA_SAFETY_ON_NULL_RETURN_VAL(cb, EINA_FALSE);
-        EINA_SAFETY_ON_NULL_RETURN_VAL(dir, EINA_FALSE);
-        EINA_SAFETY_ON_TRUE_RETURN_VAL(dir[0] == '\0', EINA_FALSE);
-
 #ifndef _WIN32
 	struct dirent *de;
 	DIR *d;
+
+	EINA_SAFETY_ON_NULL_RETURN_VAL(cb, EINA_FALSE);
+	EINA_SAFETY_ON_NULL_RETURN_VAL(dir, EINA_FALSE);
+	EINA_SAFETY_ON_TRUE_RETURN_VAL(dir[0] == '\0', EINA_FALSE);
 
 	d = opendir(dir);
 	if (!d) return EINA_FALSE;
@@ -167,7 +161,11 @@ eina_file_dir_list(const char *dir, Eina_Bool recursive, Eina_File_Dir_List_Cb c
 	HANDLE          hSearch;
 	char           *new_dir;
 	TCHAR          *tdir;
-	int             length_dir;
+	size_t          length_dir;
+
+	EINA_SAFETY_ON_NULL_RETURN_VAL(cb, EINA_FALSE);
+	EINA_SAFETY_ON_NULL_RETURN_VAL(dir, EINA_FALSE);
+	EINA_SAFETY_ON_TRUE_RETURN_VAL(dir[0] == '\0', EINA_FALSE);
 
 	length_dir = strlen(dir);
 	new_dir = (char *)alloca(length_dir + 5);
@@ -246,7 +244,7 @@ eina_file_split(char *path)
 {
 	Eina_Array *ea;
 	char *current;
-	int length;
+	size_t length;
 
 	EINA_SAFETY_ON_NULL_RETURN_VAL(path, NULL);
 
@@ -271,10 +269,6 @@ eina_file_split(char *path)
 
 	return ea;
 }
-
-/**
- * @}
- */
 
 /**
  * @}

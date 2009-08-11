@@ -41,6 +41,7 @@ static const Eina_Benchmark_Case etc[] = {
   { "Convert", eina_bench_convert },
   { "Sort", eina_bench_sort },
   { "Mempool", eina_bench_mempool },
+  { "Rectangle_Pool", eina_bench_rectangle_pool },
   { NULL, NULL }
 };
 
@@ -52,13 +53,13 @@ static void _mempool_init(void)
 {
     eina_mempool_init();
     /* force modules to be loaded in case they are not installed */
-    _modules = eina_module_list_get(PACKAGE_BUILD_DIR"/src/modules", 1, NULL, NULL);
+    _modules = eina_module_list_get(NULL, PACKAGE_BUILD_DIR"/src/modules", 1, NULL, NULL);
     eina_module_list_load(_modules);
 }
 
 static void _mempool_shutdown(void)
 {
-   eina_module_list_delete(_modules);
+   eina_module_list_flush(_modules);
    /* TODO delete the list */
    eina_mempool_shutdown();
 }

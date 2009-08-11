@@ -19,6 +19,18 @@
 #ifndef EINA_TYPES_H_
 #define EINA_TYPES_H_
 
+/**
+ * @addtogroup Eina_Core_Group Core
+ *
+ * @{
+ */
+
+/**
+ * @defgroup Eina_Types_Group Types
+ *
+ * @{
+ */
+
 #ifdef EAPI
 # undef EAPI
 #endif
@@ -45,11 +57,16 @@
 # endif
 #endif
 
+#include "eina_config.h"
+
 #ifdef EINA_WARN_UNUSED_RESULT
 # undef EINA_WARN_UNUSED_RESULT
 #endif
 #ifdef EINA_ARG_NONNULL
 # undef EINA_ARG_NONNULL
+#endif
+#ifdef EINA_DEPRECATED
+# undef EINA_DEPRECATED
 #endif
 #ifdef EINA_MALLOC
 # undef EINA_MALLOC
@@ -76,67 +93,80 @@
 # undef EINA_LIKELY
 #endif
 
-#ifdef HAVE___ATTRIBUTE__
-# ifdef __GNUC__
-#  if __GNUC__ > 3 || (__GNUC__ == 3 && __GNUC_MINOR__ >= 4)
-#   define EINA_WARN_UNUSED_RESULT __attribute__ ((warn_unused_result))
-#  else
-#   define EINA_WARN_UNUSED_RESULT
-#  endif
 
-#  if (!defined(EINA_SAFETY_CHECKS)) && (__GNUC__ > 3 || (__GNUC__ == 3 && __GNUC_MINOR__ >= 3))
-#   define EINA_ARG_NONNULL(idx, ...) __attribute__ ((nonnull(idx, ## __VA_ARGS__)))
-#  else
-#   define EINA_ARG_NONNULL(idx, ...)
-#  endif
-
-#  if __GNUC__ > 2 || (__GNUC__ == 2 && __GNUC_MINOR__ >= 96)
-#   define EINA_MALLOC __attribute__ ((malloc))
-#   define EINA_PURE __attribute__ ((pure))
-#  else
-#   define EINA_MALLOC
-#   define EINA_PURE
-#  endif
-
-#  if __GNUC__ > 2 || (__GNUC__ == 2 && __GNUC_MINOR__ > 4)
-#   define EINA_PRINTF(fmt, arg)  __attribute__((format (printf, fmt, arg)))
-#   define EINA_SCANF(fmt, arg)  __attribute__((format (scanf, fmt, arg)))
-#   define EINA_FORMAT(fmt) __attribute__((format_arg(fmt)))
-#   define EINA_CONST __attribute__((const))
-#   define EINA_UNLIKELY(exp) __builtin_expect((exp), 0)
-#   define EINA_LIKELY(exp) __builtin_expect((exp), 1)
-#  else
-#   define EINA_PRINTF(fmt, arg)
-#   define EINA_SCANF(fmt, arg)
-#   define EINA_FORMAT(fmt)
-#   define EINA_CONST
-#   define EINA_UNLIKELY(exp)
-#   define EINA_LIKELY(exp)
-#  endif
-# else /* no __GNUC__ */
+#ifdef __GNUC__
+# if __GNUC__ > 3 || (__GNUC__ == 3 && __GNUC_MINOR__ >= 4)
+#  define EINA_WARN_UNUSED_RESULT __attribute__ ((warn_unused_result))
+# else
 #  define EINA_WARN_UNUSED_RESULT
+# endif
+
+# if (!defined(EINA_SAFETY_CHECKS)) && (__GNUC__ > 3 || (__GNUC__ == 3 && __GNUC_MINOR__ >= 3))
+#  define EINA_ARG_NONNULL(idx, ...) __attribute__ ((nonnull(idx, ## __VA_ARGS__)))
+# else
 #  define EINA_ARG_NONNULL(idx, ...)
+# endif
+
+# if __GNUC__ > 3 || (__GNUC__ == 3 && __GNUC_MINOR__ >= 1)
+#  define EINA_DEPRECATED __attribute__ ((__deprecated__))
+# else
+#  define EINA_DEPRECATED
+# endif
+
+# if __GNUC__ > 2 || (__GNUC__ == 2 && __GNUC_MINOR__ >= 96)
+#  define EINA_MALLOC __attribute__ ((malloc))
+#  define EINA_PURE __attribute__ ((pure))
+# else
 #  define EINA_MALLOC
 #  define EINA_PURE
+# endif
+
+# if __GNUC__ > 2 || (__GNUC__ == 2 && __GNUC_MINOR__ > 4)
+#  define EINA_PRINTF(fmt, arg)  __attribute__((format (printf, fmt, arg)))
+#  define EINA_SCANF(fmt, arg)  __attribute__((format (scanf, fmt, arg)))
+#  define EINA_FORMAT(fmt) __attribute__((format_arg(fmt)))
+#  define EINA_CONST __attribute__((const))
+#  define EINA_UNLIKELY(exp) __builtin_expect((exp), 0)
+#  define EINA_LIKELY(exp) __builtin_expect((exp), 1)
+# else
 #  define EINA_PRINTF(fmt, arg)
 #  define EINA_SCANF(fmt, arg)
 #  define EINA_FORMAT(fmt)
 #  define EINA_CONST
-#  define EINA_UNLIKELY(exp)
-#  define EINA_LIKELY(exp)
+#  define EINA_UNLIKELY(exp) exp
+#  define EINA_LIKELY(exp) exp
 # endif
-#else /* no HAVE___ATTRIBUTE__ */
+
+#elif defined(_WIN32)
 # define EINA_WARN_UNUSED_RESULT
 # define EINA_ARG_NONNULL(idx, ...)
+# if defined(_MSC_VER) && _MSC_VER >= 1300
+#  define EINA_DEPRECATED __declspec(deprecated)
+# else
+#  define EINA_DEPRECATED
+# endif
 # define EINA_MALLOC
 # define EINA_PURE
 # define EINA_PRINTF(fmt, arg)
 # define EINA_SCANF(fmt, arg)
 # define EINA_FORMAT(fmt)
 # define EINA_CONST
-# define EINA_UNLIKELY(exp)
-# define EINA_LIKELY(exp)
-#endif
+# define EINA_UNLIKELY(exp) exp
+# define EINA_LIKELY(exp) exp
+
+#else /* ! __GNUC__ && ! _WIN32 */
+# define EINA_WARN_UNUSED_RESULT
+# define EINA_ARG_NONNULL(idx, ...)
+# define EINA_DEPRECATED
+# define EINA_MALLOC
+# define EINA_PURE
+# define EINA_PRINTF(fmt, arg)
+# define EINA_SCANF(fmt, arg)
+# define EINA_FORMAT(fmt)
+# define EINA_CONST
+# define EINA_UNLIKELY(exp) exp
+# define EINA_LIKELY(exp) exp
+#endif /* ! __GNUC__ && ! _WIN32 */
 
 
 /* remove this TRUE/FALSE redifinitions */
@@ -150,7 +180,17 @@
 #endif
 
 typedef unsigned char Eina_Bool;
+
+/**
+ * @def EINA_FALSE
+ * boolean value FALSE (numerical value 0)
+ */
 #define EINA_FALSE ((Eina_Bool)0)
+
+/**
+ * @def EINA_TRUE
+ * boolean value TRUE (numerical value 1)
+ */
 #define EINA_TRUE ((Eina_Bool)1)
 
 EAPI extern const unsigned int eina_prime_table[];
@@ -168,5 +208,13 @@ typedef Eina_Bool (*Eina_Each)(const void *container,
 
 typedef void (*Eina_Free_Cb)(void *data);
 #define EINA_FREE_CB(Function) ((Eina_Free_Cb)Function)
+
+/**
+ * @}
+ */
+
+/**
+ * @}
+ */
 
 #endif /* EINA_TYPES_H_ */

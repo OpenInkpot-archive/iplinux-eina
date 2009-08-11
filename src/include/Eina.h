@@ -36,6 +36,7 @@
  *       <li> @ref eina_hash_subsubsec
  *       <li> @ref eina_inlist_subsubsec
  *       <li> @ref eina_rbtree_subsubsec
+ *       <li> @ref eina_trash_subsubsec
  *       <li> @ref eina_list_subsubsec
  *     </ul>
  *     <li> @ref eina_stringshare_subsec
@@ -92,6 +93,10 @@
  *
  * @subsubsection eina_rbtree_subsubsec Inlined Red Black Tree
  *
+ * @subsubsection eina_trash_subsubsec Trash
+ *
+ * @subsubsection eina_trash_subsubsec Trash
+ *
  * @subsubsection eina_list_subsubsec List
  *
  * @subsection eina_stringshare_subsec Shared String
@@ -138,12 +143,14 @@ extern "C" {
 
 #include "eina_config.h"
 #include "eina_types.h"
+#include "eina_main.h"
 #include "eina_f16p16.h"
 #include "eina_rectangle.h"
 #include "eina_inlist.h"
 #include "eina_file.h"
 #include "eina_list.h"
 #include "eina_hash.h"
+#include "eina_trash.h"
 #include "eina_lalloc.h"
 #include "eina_module.h"
 #include "eina_mempool.h"
@@ -157,9 +164,8 @@ extern "C" {
 #include "eina_iterator.h"
 #include "eina_benchmark.h"
 #include "eina_convert.h"
-
-EAPI int eina_init(void);
-EAPI int eina_shutdown(void);
+#include "eina_cpu.h"
+#include "eina_tiler.h"
 
 #ifdef __cplusplus
 }
