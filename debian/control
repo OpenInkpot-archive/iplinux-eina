@@ -7,8 +7,8 @@ Build-Depends: debhelper (>= 6), cdbs, cdbs-embedded, automake, libtool, pkg-con
 Standards-Version: 3.8.2
 Homepage: http://www.enlightenment.org
 XCS-Cross-Host-Build-Depends: debhelper (>= 6), cdbs, cdbs-embedded, automake1.7 | automaken, libtool, pkg-config
-XS-Vcs-Git: http://git.openinkpot.org/eina.git
-XS-Vcs-Browser: http://git.openinkpot.org/eina.git
+XS-Vcs-Git: http://git.iplinux.org/eina.git
+XS-Vcs-Browser: http://git.iplinux.org/eina.git
 
 Package: libeina-svn-03
 Architecture: any
