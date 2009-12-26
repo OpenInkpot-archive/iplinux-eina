@@ -73,6 +73,8 @@ dnl Check the given doxygen program.
           AC_MSG_WARN([no doxygen detected. Documentation will not be built])
        fi
       ])
+else
+   efl_have_doxygen="no"
 fi
 
 dnl
@@ -84,9 +86,9 @@ if ! test "x${efl_have_doxygen}" = "xyes" ; then
    efl_enable_doc="no"
 fi
 
-AM_CONDITIONAL(EFL_BUILD_DOC, test "x${efl_enable_doc}" = "xyes")
+AM_CONDITIONAL(EFL_BUILD_DOC, test "x${efl_have_doxygen}" = "xyes")
 
-if test "x${efl_enable_doc}" = "xyes" ; then
+if test "x${efl_have_doxygen}" = "xyes" ; then
   m4_default([$1], [:])
 else
   m4_default([$2], [:])

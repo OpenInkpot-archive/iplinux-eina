@@ -1,3 +1,9 @@
+eina (0.0.2.063-1) zelazny; urgency=low
+
+  * svn-04 snapshot
+
+ -- Mikhail Gusarov <dottedmag@dottedmag.net>  Sat, 26 Dec 2009 15:13:09 +0600
+
 eina (0.0.2.062-1) asimov; urgency=low
 
   * svn-03 snapshot

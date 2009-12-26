@@ -191,7 +191,7 @@ static void*
 eina_chained_mempool_init(const char *context, __UNUSED__ const char *option, va_list args)
 {
    Chained_Mempool *mp;
-   int length;
+   size_t length;
 
    length = context ? strlen(context) + 1 : 0;
 
@@ -241,23 +241,25 @@ eina_chained_mempool_shutdown(void *data)
    free(mp);
 }
 
-static Eina_Mempool_Backend mp_backend = {
-  .name ="chained_mempool",
-  .init = &eina_chained_mempool_init,
-  .shutdown = &eina_chained_mempool_shutdown,
-  .realloc = &eina_chained_mempool_realloc,
-  .alloc = &eina_chained_mempool_malloc,
-  .free = &eina_chained_mempool_free
+static Eina_Mempool_Backend _eina_chained_mp_backend = {
+   "chained_mempool",
+   &eina_chained_mempool_init,
+   &eina_chained_mempool_free,
+   &eina_chained_mempool_malloc,
+   &eina_chained_mempool_realloc,
+   NULL,
+   NULL,
+   &eina_chained_mempool_shutdown
 };
 
 Eina_Bool chained_init(void)
 {
-	return eina_mempool_register(&mp_backend);
+	return eina_mempool_register(&_eina_chained_mp_backend);
 }
 
 void chained_shutdown(void)
 {
-	eina_mempool_unregister(&mp_backend);
+	eina_mempool_unregister(&_eina_chained_mp_backend);
 }
 
 #ifndef EINA_STATIC_BUILD_CHAINED_POOL

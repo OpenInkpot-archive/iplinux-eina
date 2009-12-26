@@ -24,224 +24,8 @@
  *
  * The Eina error module provides a way to manage errors in a simple
  * but powerful way in libraries and modules. It is also used in Eina
- * itself. It provides facilities for displaying different kind of
- * messages (warning, informations, errors, or debug), which can be
- * tuned by the user, or for registering new errors messages.
- *
- * @section tutorial_error_basic_usage Basic Usage
- *
- * The first thing to do when using the error module is to initialize
- * it with eina_error_init() and, when the error module is not used
- * anymore, to shut down it with eina_error_shutdown(). So a basic
- * program would look like that:
- *
- * @code
- * #include <stdlib.h>
- * #include <stdio.h>
- *
- * #include <eina_error.h>
- *
- * int main(void)
- * {
- *    if (!eina_error_init())
- *    {
- *        printf ("Error during the initialization of eina_error module\n");
- *        return EXIT_FAILURE;
- *    }
- *
- *    eina_error_shutdown();
- *
- *    return EXIT_SUCCESS;
- * }
- * @endcode
- *
- * All program using any module of eina must be compiled with the
- * following command:
- *
- * @code
- * gcc -Wall -o my_exe my_source.c `pkg-config --cflags --libs eina`
- * @endcode
- *
- * Now that the error module is initialized, error messages can
- * be displayed. Helper macros are already defined for such purpose:
- *
- * @li EINA_ERROR_PERR(),
- * @li EINA_ERROR_PINFO(),
- * @li EINA_ERROR_PWARN(),
- * @li EINA_ERROR_PDBG().
- *
- * Here is an example:
- *
- * @code
- * #include <stdlib.h>
- * #include <stdio.h>
- *
- * #include <eina_error.h>
- *
- * void test(int i)
- * {
- *    EINA_ERROR_PDBG("Entering test\n");
- *
- *    if (i < 0)
- *    {
- *        EINA_ERROR_PERR("argument is negative\n");
- *        return;
- *    }
- *
- *    EINA_ERROR_PINFO("argument non negative\n");
- *
- *    EINA_ERROR_PDBG("Exiting test\n");
- * }
- *
- * int main(void)
- * {
- *    if (!eina_error_init())
- *    {
- *        printf ("Error during the initialization of eina_error module\n");
- *        return EXIT_FAILURE;
- *    }
- *
- *    test(-1);
- *    test(0);
- *
- *    eina_error_shutdown();
- *
- *    return EXIT_SUCCESS;
- * }
- * @endcode
- *
- * If you compiled Eina without debug mode, after executing that
- * program, you will see only 1 message (the argument being
- * negative). Why ? These macros are just wrappers around
- * eina_error_print(). This function only displays messages if the
- * current error level is lesser or equal than the one used by
- * eina_error_print(). By default, the current error level is
- * #EINA_ERROR_LEVEL_ERR (in non debug mode), and the macro uses
- * the error values defines by #Eina_Error_Level. So as
- * #EINA_ERROR_LEVEL_ERR is the smallest value, only
- * EINA_ERROR_PERR() will display the message.
- *
- * To modify this behavior, you have two solutions:
- *
- * @li Using the environment variable EINA_ERROR_LEVEL. In that case,
- * just set the environment variable to a integer number between 0
- * (#EINA_ERROR_LEVEL_ERR) and 3 (#EINA_ERROR_LEVEL_DBG)
- * before executing the program. That environment variable will be
- * read during the first call of eina_error_init().
- * @li Using the function eina_error_log_level_set().
- *
- * So try using the environment variable like this:
- *
- * @code
- * EINA_ERROR_LEVEL=2 ./my_app
- * @endcode
- *
- * To do the same with eina_error_log_level_set(), just add
- *
- * @code
- * eina_error_log_level_set(EINA_ERROR_LEVEL_INFO);
- * @endcode
- *
- * before the calls of the tests in the above example.
- *
- * @section tutorial_error_advanced_display Advanced usage of print callbacks
- *
- * The error module allows the user to change the way
- * eina_error_print() displays the messages. It suffices to pass to
- * eina_error_print_cb_set() the function used to display the
- * message. That  function must be of type #Eina_Error_Print_Cb. As a
- * custom data can be passed to that callback, powerful display
- * messages can be displayed.
- *
- * It is suggested to not use __FILE__, __FUNCTION__ or __LINE__ when
- * writing that callback, but when defining macros (like
- * EINA_ERROR_PERR() and other macros).
- *
- * Here is an example of custom callback, whose behavior can be
- * changed at runtime:
- *
- * @code
- * #include <stdlib.h>
- * #include <stdio.h>
- *
- * #include <eina_error.h>
- *
- * #define ERROR(fmt, ...)                                    \
- *    eina_error_print(EINA_ERROR_LEVEL_ERR, __FILE__, __FUNCTION__, __LINE__, fmt, ##__VA_ARGS__)
- *
- * typedef struct _Data Data;
- *
- * struct _Data
- * {
- *    int to_stderr;
- * };
- *
- * void print_cb(Eina_Error_Level level,
- *               const char *file,
- *               const char *fnc,
- *               int line,
- *               const char *fmt,
- *               void *data,
- *               va_list args)
- * {
- *    Data *d;
- *    FILE *output;
- *    char *str;
- *
- *    d = (Data *)data;
- *    if (d->to_stderr)
- *    {
- *       output = stderr;
- *       str = "stderr";
- *    }
- *    else
- *    {
- *       output = stdout;
- *       str = "stdout";
- *    }
- *
- *    fprintf(output, "%s:%s (%d) %s: ", file, fnc, line, str);
- *    vfprintf(output, fmt, args);
- * }
- *
- * void test(Data *data, int i)
- * {
- *    if (i < 0)
- *       data->to_stderr = 0;
- *    else
- *       data->to_stderr = 1;
- *
- *    ERROR("error message...\n");
- * }
- *
- * int main(void)
- * {
- *    Data *data;
- *
- *    if (!eina_error_init())
- *    {
- *       printf ("Error during the initialization of eina_error module\n");
- *       return EXIT_FAILURE;
- *    }
- *
- *    data = (Data *)malloc(sizeof(Data));
- *    if (!data)
- *    {
- *       printf ("Error during memory allocation\n");
- *       eina_error_shutdown();
- *       return EXIT_FAILURE;
- *    }
- *
- *    eina_error_print_cb_set(print_cb, data);
- *
- *    test(data, -1);
- *    test(data, 0);
- *
- *    eina_error_shutdown();
- *
- *    return EXIT_SUCCESS;
- * }
- * @endcode
+ * itself. Similar to libC's @c errno and strerror() facilities, this
+ * is extensible and recommended for other libraries and applications.
  *
  * @section tutorial_error_registering_msg Registering messages
  *
@@ -296,7 +80,7 @@
  * {
  *    void *data;
  *
- *    if (!eina_error_init())
+ *    if (!eina_init())
  *    {
  *       printf ("Error during the initialization of eina_error module\n");
  *       return EXIT_FAILURE;
@@ -336,13 +120,13 @@
  *                 eina_error_msg_get(err));
  *    }
  *
- *    eina_error_shutdown();
+ *    eina_shutdown();
  *
  *    return EXIT_SUCCESS;
  * }
  * @endcode
  *
- * Of course, instead of printf(), eina_error_print() can be used to
+ * Of course, instead of printf(), eina_log_print() can be used to
  * have beautiful error messages.
  */
 
@@ -358,10 +142,14 @@
 # include <Evil.h>
 #endif
 
-#include "eina_error.h"
-#include "eina_inlist.h"
+#include "eina_config.h"
 #include "eina_private.h"
+#include "eina_log.h" /* remove me when eina_error_print is removed! */
+
+
+/* undefs EINA_ARG_NONULL() so NULL checks are not compiled out! */
 #include "eina_safety_checks.h"
+#include "eina_error.h"
 
 /* TODO
  * + printing errors to stdout or stderr can be implemented
@@ -380,31 +168,44 @@
  * @cond LOCAL
  */
 
-static int _eina_error_init_count = 0;
-static Eina_Inlist *_error_list = NULL;
-static int _error_list_count = 0;
-static Eina_Error _err;
-static Eina_Error_Print_Cb _print_cb = eina_error_print_cb_stdout;
-static void *_print_cb_data = NULL;
-
-#define RED     "\033[31;1m"
-#define GREEN   "\033[32;1m"
-#define YELLOW  "\033[33;1m"
-#define WHITE   "\033[37;1m"
-#define NOTHING "\033[0m"
-
-#ifdef DEBUG
-static Eina_Error_Level _error_level = EINA_ERROR_LEVEL_DBG;
-#else
-static Eina_Error_Level _error_level = EINA_ERROR_LEVEL_ERR;
-#endif
-
-static const char *_colors[EINA_ERROR_LEVELS] = {
-  RED, // EINA_ERROR_LEVEL_ERR
-  YELLOW, // EINA_ERROR_LEVEL_WARN
-  NOTHING, // EINA_ERROR_LEVEL_INFO
-  GREEN, // EINA_ERROR_LEVEL_DBG
+typedef struct _Eina_Error_Message Eina_Error_Message;
+struct _Eina_Error_Message
+{
+   Eina_Bool string_allocated;
+   const char *string;
 };
+
+static Eina_Error_Message *_eina_errors = NULL;
+static size_t _eina_errors_count = 0;
+static size_t _eina_errors_allocated = 0;
+static Eina_Error _eina_last_error;
+
+static Eina_Error_Message *
+_eina_error_msg_alloc(void)
+{
+   size_t idx;
+
+   if (_eina_errors_count == _eina_errors_allocated)
+     {
+	void *tmp;
+	size_t size;
+
+	if (EINA_UNLIKELY(_eina_errors_allocated == 0))
+	  size = 24;
+	else
+	  size = _eina_errors_allocated + 8;
+
+	tmp = realloc(_eina_errors, sizeof(Eina_Error_Message) * size);
+	if (!tmp)
+	  return NULL;
+	_eina_errors = tmp;
+	_eina_errors_allocated = size;
+     }
+
+   idx = _eina_errors_count;
+   _eina_errors_count++;
+   return _eina_errors + idx;
+}
 
 /**
  * @endcond
@@ -424,61 +225,13 @@ static const char *_colors[EINA_ERROR_LEVELS] = {
  *
  * @brief These functions provide error management for projects.
  *
- * The error system must be initialized with eina_error_init() and
- * shut down with eina_error_shutdown(). The most generic way to print
- * errors is to use eina_error_print() but the helper macros
- * EINA_ERROR_PERR(), EINA_ERROR_PINFO(), EINA_ERROR_PWARN() and
- * EINA_ERROR_PDBG() should be used instead.
+ * To use the error system Eina must be initialized with eina_init()
+ * and later shut down with eina_shutdown(). Error codes are
+ * registered with eina_error_msg_register() and converted from
+ * identifier to original message string with eina_error_msg_get().
  *
- * Here is a straightforward example:
- *
- * @code
- * #include <stdlib.h>
- * #include <stdio.h>
- *
- * #include <eina_error.h>
- *
- * void test_warn(void)
- * {
- *    EINA_ERROR_PWARN("Here is a warning message\n");
- * }
- *
- * int main(void)
- * {
- *    if (!eina_error_init())
- *    {
- *        printf ("Error during the initialization of eina_error module\n");
- *        return EXIT_FAILURE;
- *    }
- *
- *    test_warn();
- *
- *    eina_error_shutdown();
- *
- *    return EXIT_SUCCESS;
- * }
- * @endcode
- *
- * Compile this code with the following command:
- *
- * @code
- * gcc -Wall -o test_eina_error test_eina.c `pkg-config --cflags --libs eina`
- * @endcode
- *
- * If Eina is compiled without debug mode, then executing the
- * resulting program displays nothing because the default error level
- * is #EINA_ERROR_LEVEL_ERR and we want to display a warning
- * message, which level is strictly greater than the error level (see
- * eina_error_print() for more informations). Now execute the program
- * with:
- *
- * @code
- * EINA_ERROR_LEVEL=2 ./test_eina_error
- * @endcode
- *
- * You should see a message displayed in the terminal.
- *
- * For more information, you can look at the @ref tutorial_error_page.
+ * Logging functions are not in eina_error anymore, see
+ * eina_log_print() instead.
  *
  * @{
  */
@@ -490,116 +243,129 @@ static const char *_colors[EINA_ERROR_LEVELS] = {
 
 EAPI Eina_Error EINA_ERROR_OUT_OF_MEMORY = 0;
 
+static const char EINA_ERROR_OUT_OF_MEMORY_STR[] = "Out of memory";
+
 /**
  * @endcond
  */
 
 /**
+ * @internal
  * @brief Initialize the error module.
  *
- * @return 1 or greater on success, 0 on error.
+ * @return #EINA_TRUE on success, #EINA_FALSE on failure.
  *
  * This function sets up the error module of Eina. It is called by
- * eina_init() and by all modules initialization functions. It returns
- * @c 0 on failure, otherwise it returns the number of times it is
- * called.
- *
- * The default error level value is set by default to
- * #EINA_ERROR_LEVEL_DBG if Eina is compiled with debug mode, or to
- * #EINA_ERROR_LEVEL_ERR otherwise. That value can be overwritten by
- * setting the environment variable EINA_ERROR_LEVEL. This function
- * checks the value of that environment variable in the first
- * call. Its value must be a number between 0 and 3, to match the
- * error levels #EINA_ERROR_LEVEL_ERR, #EINA_ERROR_LEVEL_WARN,
- * #EINA_ERROR_LEVEL_INFO and #EINA_ERROR_LEVEL_DBG. That value can
- * also be set later with eina_error_log_level_set().
+ * eina_init().
  *
  * This function registers the error #EINA_ERROR_OUT_OF_MEMORY.
  *
- * Once the error module is not used anymore, then
- * eina_error_shutdown() must be called to shut down the error
- * module.
- *
  * @see eina_init()
  */
-EAPI int eina_error_init(void)
+Eina_Bool
+eina_error_init(void)
 {
-	if (!_eina_error_init_count)
-	{
-		char *level;
-		/* TODO register the eina's basic errors */
-		if ((level = getenv("EINA_ERROR_LEVEL")))
-		{
-			_error_level = atoi(level);
-		}
-		EINA_ERROR_OUT_OF_MEMORY = eina_error_msg_register("Out of memory");
-	}
-	/* get all the modules */
-	return ++_eina_error_init_count;
+   /* TODO register the eina's basic errors */
+   EINA_ERROR_OUT_OF_MEMORY = eina_error_msg_static_register(EINA_ERROR_OUT_OF_MEMORY_STR);
+   return EINA_TRUE;
 }
 
 /**
+ * @internal
  * @brief Shut down the error module.
  *
- * @return 0 when the error module is completely shut down, 1 or
- * greater otherwise.
+ * @return #EINA_TRUE on success, #EINA_FALSE on failure.
  *
  * This function shuts down the error module set up by
- * eina_error_init(). It is called by eina_shutdown() and by all
- * modules shutdown functions. It returns 0 when it is called the
- * same number of times than eina_error_init(). In that case it clears
- * the error list.
+ * eina_error_init(). It is called by eina_shutdown().
  *
  * @see eina_shutdown()
  */
-EAPI int eina_error_shutdown(void)
+Eina_Bool
+eina_error_shutdown(void)
 {
-	Eina_Inlist *tmp;
+   Eina_Error_Message *eem, *eem_end;
 
-	_eina_error_init_count--;
-	if (!_eina_error_init_count)
-	{
-		/* remove the error strings */
-		while (_error_list)
-		{
-			tmp = _error_list;
+   eem = _eina_errors;
+   eem_end = eem + _eina_errors_count;
 
-			_error_list = _error_list->next;
-			free(tmp);
-		}
-		_error_list_count = 0;
-	}
-	return _eina_error_init_count;
+   for (; eem < eem_end; eem++)
+     if (eem->string_allocated)
+       free((char *)eem->string);
+
+   free(_eina_errors);
+   _eina_errors = NULL;
+   _eina_errors_count = 0;
+   _eina_errors_allocated = 0;
+
+   return EINA_TRUE;
 }
 
 /**
  * @brief Register a new error type.
  *
- * @param msg The description of the error.
+ * @param msg The description of the error. It will be duplicated using
+ *        strdup().
  * @return The unique number identifier for this error.
  *
  * This function stores in a list the error message described by
  * @p msg. The returned value is a unique identifier greater or equal
  * than 1. The description can be retrieve later by passing to
  * eina_error_msg_get() the returned value.
+ *
+ * @see eina_error_msg_static_register()
  */
-EAPI Eina_Error eina_error_msg_register(const char *msg)
+EAPI Eina_Error
+eina_error_msg_register(const char *msg)
 {
-	Eina_Inlist *tmp;
-	size_t length;
+   Eina_Error_Message *eem;
 
-	EINA_SAFETY_ON_NULL_RETURN_VAL(msg, 0);
+   EINA_SAFETY_ON_NULL_RETURN_VAL(msg, 0);
 
-	length = strlen(msg) + 1;
+   eem = _eina_error_msg_alloc();
+   if (!eem)
+     return 0;
 
-	tmp = malloc(sizeof (Eina_Inlist) + length);
-	if (!tmp) return 0;
+   eem->string_allocated = EINA_TRUE;
+   eem->string = strdup(msg);
+   if (!eem->string)
+     {
+	_eina_errors_count--;
+	return 0;
+     }
 
-	memcpy((char*)(tmp + 1), msg, length);
+   return _eina_errors_count; /* identifier = index + 1 (== _count). */
+}
 
-	_error_list = eina_inlist_append(_error_list, tmp);
+/**
+ * @brief Register a new error type, statically allocated message.
+ *
+ * @param msg The description of the error. This string will not be
+ *        duplicated and thus the given pointer should live during
+ *        usage of eina_error.
+ * @return The unique number identifier for this error.
+ *
+ * This function stores in a list the error message described by
+ * @p msg. The returned value is a unique identifier greater or equal
+ * than 1. The description can be retrieve later by passing to
+ * eina_error_msg_get() the returned value.
+ *
+ * @see eina_error_msg_register()
+ */
+EAPI Eina_Error
+eina_error_msg_static_register(const char *msg)
+{
+   Eina_Error_Message *eem;
 
-	return ++_error_list_count;
+   EINA_SAFETY_ON_NULL_RETURN_VAL(msg, 0);
+
+   eem = _eina_error_msg_alloc();
+   if (!eem)
+     return 0;
+
+   eem->string_allocated = EINA_FALSE;
+   eem->string = msg;
+   return _eina_errors_count; /* identifier = index + 1 (== _count). */
 }
 
 /**
@@ -612,14 +378,14 @@ EAPI Eina_Error eina_error_msg_register(const char *msg)
  * registered with eina_error_msg_register(). If an incorrect error is
  * given, then @c NULL is returned.
  */
-EAPI const char * eina_error_msg_get(Eina_Error error)
+EAPI const char *
+eina_error_msg_get(Eina_Error error)
 {
-	Eina_Inlist *tmp;
-	int i;
-
-	for (i = 0, tmp = _error_list; i < error - 1; ++i, tmp = tmp->next)
-		;
-	return (char*) (tmp + 1);
+   if (error < 1)
+     return NULL;
+   if ((size_t)error > _eina_errors_count)
+     return NULL;
+   return _eina_errors[error - 1].string;
 }
 
 /**
@@ -630,9 +396,10 @@ EAPI const char * eina_error_msg_get(Eina_Error error)
  * This function returns the last error set by eina_error_set(). The
  * description of the message is returned by eina_error_msg_get().
  */
-EAPI Eina_Error eina_error_get(void)
+EAPI Eina_Error
+eina_error_get(void)
 {
-	return _err;
+   return _eina_last_error;
 }
 
 /**
@@ -643,156 +410,53 @@ EAPI Eina_Error eina_error_get(void)
  * This function sets the last error identifier. The last error can be
  * retrieved with eina_error_get().
  */
-EAPI void eina_error_set(Eina_Error err)
+EAPI void
+eina_error_set(Eina_Error err)
 {
-	_err = err;
+   _eina_last_error = err;
 }
 
 /**
- * @brief Print the error to a file.
- *
- * @param level The error level.
- * @param file The name of the file where the error occurred.
- * @param fnc The name of the function where the error occurred.
- * @param line The number of the line where the error occurred.
- * @param fmt The format to use.
- *
- * This function sends to a stream (like stdout or stderr) a formatted
- * string that describes the error. The error level is set by
- * @p level, the name of the file, of the function and the number of the
- * line where the error occurred are respectively set by @p file,
- * @p fnc and @p line. A description of the error message is given by
- * @p fmt, which is a formatted string, followed by optional arguments
- * that can be converted (like with printf). If @p level is strictly
- * larger than the current error level, that function returns
- * immediately, otherwise it prints all the errors up to the current
- * error level. The current error level can be changed with
- * eina_error_log_level_set(). See also eina_error_init() for more
- * informations.
- *
- * By default, that formatted message is send to stdout and is
- * formatted by eina_error_print_cb_stdout(). The destination of the
- * formatted message is send and the way it is formatted can be
- * changed by setting a print callback with
- * eina_error_print_cb_set(). Some print callbacks are already
- * defined: eina_error_print_cb_stdout() that send the message to
- * stdout and eina_error_print_cb_file() that sends it to a file, but
- * custom print callbacks can be used. They must be of type
- * #Eina_Error_Print_Cb.
+ * @deprecated use eina_log_print() instead.
  */
-EAPI void eina_error_print(Eina_Error_Level level, const char *file,
+EAPI void eina_error_print(int level, const char *file,
 		const char *fnc, int line, const char *fmt, ...)
 {
 	va_list args;
 
-	if (level > _error_level)
-		return;
-
 	EINA_SAFETY_ON_NULL_RETURN(file);
 	EINA_SAFETY_ON_NULL_RETURN(fnc);
 	EINA_SAFETY_ON_NULL_RETURN(fmt);
+
+	EINA_LOG_WARN("this function is deprecated!");
 
 	va_start(args, fmt);
-	_print_cb(level, file, fnc, line, fmt, _print_cb_data, args);
+	eina_log_vprint(EINA_LOG_DOMAIN_GLOBAL, level, file, fnc, line, fmt, args);
 	va_end(args);
-
-	if (getenv("EINA_ERROR_ABORT")) abort();
 }
 
-EAPI void eina_error_vprint(Eina_Error_Level level, const char *file,
+/**
+ * @deprecated use eina_log_vprint() instead.
+ */
+EAPI void eina_error_vprint(int level, const char *file,
 		const char *fnc, int line, const char *fmt, va_list args)
 {
-	if (level > _error_level)
-		return;
-
 	EINA_SAFETY_ON_NULL_RETURN(file);
 	EINA_SAFETY_ON_NULL_RETURN(fnc);
 	EINA_SAFETY_ON_NULL_RETURN(fmt);
 
-	_print_cb(level, file, fnc, line, fmt, _print_cb_data, args);
+	EINA_LOG_WARN("this function is deprecated!");
 
-	if (getenv("EINA_ERROR_ABORT")) abort();
+	eina_log_vprint(EINA_LOG_DOMAIN_GLOBAL, level, file, fnc, line, fmt, args);
 }
 
 /**
- * @brief Print callback that sends the error message to stdout.
- *
- * @param level The error level.
- * @param file The name of the file where the error occurred.
- * @param fnc The name of the function where the error occurred.
- * @param line The number of the line where the error occurred.
- * @param fmt The format to use.
- * @param data Unused.
- * @param args The arguments that will be converted.
- *
- * This function is used to send a formatted error message to standard
- * output and is used as a print callback, with
- * eina_error_print(). This is the default print callback.
+ * @deprecated use eina_log_level_set() instead.
  */
-EAPI void eina_error_print_cb_stdout(Eina_Error_Level level, const char *file,
-		const char *fnc, int line, const char *fmt, __UNUSED__ void *data,
-		va_list args)
+EAPI void eina_error_log_level_set(int level)
 {
-	printf("%s", _colors[level]);
-	printf("[%s:%d] %s() ", file, line, fnc);
-	printf("%s", _colors[EINA_ERROR_LEVEL_INFO]);
-	vprintf(fmt, args);
-}
-
-/**
- * @brief Print callback that sends the error message to a specified stream.
- *
- * @param level Unused.
- * @param file The name of the file where the error occurred.
- * @param fnc The name of the function where the error occurred.
- * @param line The number of the line where the error occurred.
- * @param fmt The format to use.
- * @param data The file stream.
- * @param args The arguments that will be converted.
- *
- * This function is used to send a formatted error message to the
- * stream specified by @p data. That stream must be of type FILE *. Look
- * at eina_error_print_cb_stdout() for the description of the other
- * parameters. Use eina_error_print_cb_set() to set it as default
- * print callback in eina_error_print().
- */
-EAPI void eina_error_print_cb_file(__UNUSED__ Eina_Error_Level level, const char *file,
-		const char *fnc, int line, const char *fmt, void *data,
-		va_list args)
-{
-	FILE *f = data;
-
-	fprintf(f, "[%s:%d] %s() ", file, line, fnc);
-	vfprintf(f, fmt, args);
-}
-
-/**
- * @brief Set the default print callback.
- *
- * @param cb The print callback.
- * @param data The data to pass to the callback
- *
- * This function sets the default print callback @p cb used by
- * eina_error_print(). A data can be passed to that callback with
- * @p data.
- */
-EAPI void eina_error_print_cb_set(Eina_Error_Print_Cb cb, void *data)
-{
-	_print_cb = cb;
-	_print_cb_data = data;
-}
-
-/**
- * @brief Set the default error log level.
- *
- * @param level The error level.
- *
- * This function sets the error log level @p level. It is used in
- * eina_error_print().
- */
-EAPI void eina_error_log_level_set(Eina_Error_Level level)
-{
-	_error_level = level;
+   EINA_LOG_WARN("this function is deprecated!");
+   eina_log_level_set(level);
 }
 
 /**

@@ -29,8 +29,10 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-#include "eina_tiler.h"
+#include "eina_config.h"
 #include "eina_private.h"
+#include "eina_tiler.h"
+#include "eina_error.h"
 
 /*============================================================================*
  *                                  Local                                     *
@@ -463,6 +465,7 @@ static inline int _split_fuzzy(list_t *dirty, const rect_t a, rect_t *b)
 	return action;
 }
 
+#if 0
 static void rect_list_node_pool_set_max(int max)
 {
 	int diff;
@@ -481,6 +484,7 @@ static void rect_list_node_pool_set_max(int max)
 
 	list_node_pool.max = max;
 }
+#endif
 
 static void rect_list_node_pool_flush(void)
 {
@@ -510,6 +514,7 @@ static inline void rect_list_node_pool_put(list_node_t *node)
 		free(node);
 }
 
+#if 0
 static void rect_print(const rect_t r)
 {
 	printf("<rect(%d, %d, %d, %d)>", r.left, r.top, r.width, r.height);
@@ -542,7 +547,7 @@ static void rect_list_print(const list_t rects)
 	}
 	printf("]\n");
 }
-
+#endif
 
 static inline list_node_t *
 rect_list_unlink_next(list_t *rects, list_node_t *parent_node)
@@ -642,6 +647,7 @@ static void rect_list_del_split_strict(list_t *rects, const rect_t del_r)
 	rect_list_concat(rects, &modified);
 }
 
+#if 0
 static void rect_list_add_split_strict(list_t *rects, list_node_t *node)
 {
 	list_t dirty = list_zeroed;
@@ -710,6 +716,7 @@ static void rect_list_add_split_strict(list_t *rects, list_node_t *node)
 		cur_node = cur_node->next;
 	}
 }
+#endif
 
 static list_node_t *
 rect_list_add_split_fuzzy(list_t *rects, list_node_t *node, int accepted_error)
@@ -983,7 +990,7 @@ static inline void _splitter_del(Eina_Tiler *t)
 	rect_list_node_pool_flush();
 }
 
-static inline void _splitter_tile_size_set(Eina_Tiler *t, int w, int h)
+static inline void _splitter_tile_size_set(Eina_Tiler *t, int w __UNUSED__, int h __UNUSED__)
 {
 	/* TODO are w and h used for something? */
 	t->splitter.rects = list_zeroed;
@@ -1134,7 +1141,7 @@ EAPI void eina_tiler_tile_size_set(Eina_Tiler *t, int w, int h)
  * To be documented
  * FIXME: To be fixed
  */
-EAPI Eina_Bool eina_tiler_rect_add(Eina_Tiler *t, Eina_Rectangle *r)
+EAPI Eina_Bool eina_tiler_rect_add(Eina_Tiler *t, const Eina_Rectangle *r)
 {
 	Eina_Rectangle tmp;
 
@@ -1152,7 +1159,7 @@ EAPI Eina_Bool eina_tiler_rect_add(Eina_Tiler *t, Eina_Rectangle *r)
  * To be documented
  * FIXME: To be fixed
  */
-EAPI void eina_tiler_rect_del(Eina_Tiler *t, Eina_Rectangle *r)
+EAPI void eina_tiler_rect_del(Eina_Tiler *t, const Eina_Rectangle *r)
 {
 	Eina_Rectangle tmp;
 
@@ -1208,4 +1215,68 @@ EAPI Eina_Iterator * eina_tiler_iterator_new(const Eina_Tiler *t)
 	EINA_MAGIC_SET(it, EINA_MAGIC_TILER_ITERATOR);
 
 	return &it->iterator;
+}
+
+struct _Eina_Tile_Grid_Slicer_Iterator
+{
+   Eina_Iterator iterator;
+   Eina_Tile_Grid_Slicer priv;
+};
+
+typedef struct _Eina_Tile_Grid_Slicer_Iterator Eina_Tile_Grid_Slicer_Iterator;
+
+static void
+eina_tile_grid_slicer_iterator_free(Eina_Tile_Grid_Slicer_Iterator *it)
+{
+   EINA_MAGIC_SET(&it->iterator, EINA_MAGIC_NONE);
+   free(it);
+}
+
+static Eina_Bool
+eina_tile_grid_slicer_iterator_next(Eina_Tile_Grid_Slicer_Iterator *it, void **data)
+{
+   return eina_tile_grid_slicer_next
+     (&it->priv, (const Eina_Tile_Grid_Info **)data);
+}
+
+/**
+ * @brief Creates a new Eina_Iterator that slices over a list of tiles.
+ *
+ * @param   x X axis coordinate.
+ * @param   y Y axis coordinate.
+ * @param   w width.
+ * @param   h height.
+ * @param   tile_w tile width.
+ * @param   tile_h tile height.
+ * @return  A pointer to the Eina_Iterator.
+ *          @c NULL on failure.
+ *
+ * The tile grid is defined by @a tile_w and @a tile_h while the region is
+ * defined by @a x, @a y, @a w, @a h. The output is given as
+ * @c Eina_Tile_Grid_Info where tile index is given in @c col col and
+ * @c row row with tile-relative
+ *    coordinates in @c x, @c y, @c w, @c h. If tile was fully filled by
+ *    region, then @c full flag
+ *     is set.
+ */
+EAPI Eina_Iterator *
+eina_tile_grid_slicer_iterator_new(int x, int y, int w, int h, int tile_w, int tile_h)
+{
+   Eina_Tile_Grid_Slicer_Iterator *it;
+
+   it = calloc(1, sizeof(*it));
+   if (!it)
+     {
+	eina_error_set(EINA_ERROR_OUT_OF_MEMORY);
+	return NULL;
+     }
+
+   EINA_MAGIC_SET(&it->iterator, EINA_MAGIC_ITERATOR);
+
+   it->iterator.next = FUNC_ITERATOR_NEXT(eina_tile_grid_slicer_iterator_next);
+   it->iterator.free = FUNC_ITERATOR_FREE(eina_tile_grid_slicer_iterator_free);
+
+   eina_tile_grid_slicer_setup(&it->priv, x, y, w, h, tile_w, tile_h);
+
+   return &it->iterator;
 }

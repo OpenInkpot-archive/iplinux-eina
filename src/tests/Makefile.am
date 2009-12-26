@@ -48,7 +48,8 @@ eina_suite_SOURCES = 	\
 eina_suite.c 		\
 eina_test_stringshare.c \
 eina_test_array.c 	\
-eina_test_error.c 	\
+eina_test_error.c	\
+eina_test_log.c 	\
 eina_test_magic.c 	\
 eina_test_inlist.c 	\
 eina_test_main.c 	\
@@ -64,7 +65,9 @@ eina_test_file.c	\
 eina_test_benchmark.c	\
 eina_test_mempool.c	\
 eina_test_rectangle.c	\
-eina_test_list.c
+eina_test_list.c	\
+eina_test_matrixsparse.c \
+eina_test_tiler.c
 
 eina_suite_LDADD = @CHECK_LIBS@ $(top_builddir)/src/lib/libeina.la
 

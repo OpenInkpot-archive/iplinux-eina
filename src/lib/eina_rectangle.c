@@ -24,13 +24,16 @@
 #include <stdlib.h>
 
 #include "eina_config.h"
-#include "eina_rectangle.h"
+#include "eina_private.h"
 #include "eina_magic.h"
 #include "eina_inlist.h"
-#include "eina_private.h"
-#include "eina_safety_checks.h"
 #include "eina_mempool.h"
 #include "eina_list.h"
+#include "eina_trash.h"
+
+/* undefs EINA_ARG_NONULL() so NULL checks are not compiled out! */
+#include "eina_safety_checks.h"
+#include "eina_rectangle.h"
 
 /*============================================================================*
  *                                  Local                                     *
@@ -43,6 +46,8 @@
 #define EINA_RECTANGLE_POOL_MAGIC 0x1578FCB0
 #define EINA_RECTANGLE_ALLOC_MAGIC 0x1578FCB1
 
+#define BUCKET_THRESHOLD 110
+
 typedef struct _Eina_Rectangle_Alloc Eina_Rectangle_Alloc;
 
 struct _Eina_Rectangle_Pool
@@ -50,6 +55,9 @@ struct _Eina_Rectangle_Pool
    Eina_Inlist *head;
    Eina_List *empty;
    void *data;
+
+   Eina_Trash *bucket;
+   unsigned int bucket_count;
 
    unsigned int references;
    int w;
@@ -78,9 +86,22 @@ struct _Eina_Rectangle_Alloc
        EINA_MAGIC_FAIL((d), EINA_RECTANGLE_ALLOC_MAGIC);       \
   } while (0);
 
-static int _eina_rectangle_init_count = 0;
 static Eina_Mempool *_eina_rectangle_alloc_mp = NULL;
 static Eina_Mempool *_eina_rectangle_mp = NULL;
+
+static Eina_Trash *_eina_rectangles = NULL;
+static unsigned int _eina_rectangles_count = 0;
+static int _eina_rectangle_log_dom = -1;
+
+#ifdef ERR
+#undef ERR
+#endif
+#define ERR(...) EINA_LOG_DOM_ERR(_eina_rectangle_log_dom, __VA_ARGS__)
+
+#ifdef DBG
+#undef DBG
+#endif
+#define DBG(...) EINA_LOG_DOM_DBG(_eina_rectangle_log_dom, __VA_ARGS__)
 
 static int
 _eina_rectangle_cmp(const Eina_Rectangle *r1, const Eina_Rectangle *r2)
@@ -222,82 +243,69 @@ _eina_rectangle_empty_space_find(Eina_List *empty, int w, int h, int *x, int *y)
  *                                   API                                      *
  *============================================================================*/
 
-EAPI int
+Eina_Bool
 eina_rectangle_init(void)
 {
-   const char *choice;
+   const char *choice, *tmp;
 
-   _eina_rectangle_init_count++;
-
-   if (_eina_rectangle_init_count > 1) return _eina_rectangle_init_count;
-
-   if (!eina_error_init())
+   _eina_rectangle_log_dom = eina_log_domain_register("eina_rectangle", EINA_LOG_COLOR_DEFAULT);
+   if (_eina_rectangle_log_dom < 0)
      {
-        EINA_ERROR_PERR("Could not initialize eina error module.\n");
-        return 0;
-     }
-   if (!eina_mempool_init())
-     {
-        EINA_ERROR_PERR("Could not initialize eina mempool module.\n");
-        goto mempool_init_error;
-     }
-
-   if (!eina_list_init())
-     {
-	EINA_ERROR_PERR("Could not initialize eina list module.\n");
-	goto list_init_error;
+	EINA_LOG_ERR("Could not register log domain: eina_rectangle");
+	return EINA_FALSE;
      }
 
 #ifdef EINA_DEFAULT_MEMPOOL
    choice = "pass_through";
 #else
-   if (!(choice = getenv("EINA_MEMPOOL")))
-     choice = "chained_mempool";
+   choice = "chained_mempool";
 #endif
+   tmp = getenv("EINA_MEMPOOL");
+   if (tmp && tmp[0])
+     choice = tmp;
 
-   _eina_rectangle_alloc_mp = eina_mempool_add(choice, "rectangle-alloc", NULL,
-                                         sizeof (Eina_Rectangle_Alloc) + sizeof (Eina_Rectangle), 1024);
+   _eina_rectangle_alloc_mp = eina_mempool_add
+     (choice, "rectangle-alloc", NULL,
+      sizeof(Eina_Rectangle_Alloc) + sizeof(Eina_Rectangle), 1024);
    if (!_eina_rectangle_alloc_mp)
      {
-        EINA_ERROR_PERR("ERROR: Mempool for rectangle cannot be allocated in list init.\n");
+        ERR("Mempool for rectangle cannot be allocated in rectangle init.");
         goto init_error;
      }
 
-   _eina_rectangle_mp = eina_mempool_add(choice, "rectangle", NULL, sizeof (Eina_Rectangle), 256);
+   _eina_rectangle_mp = eina_mempool_add
+     (choice, "rectangle", NULL, sizeof(Eina_Rectangle), 256);
    if (!_eina_rectangle_mp)
      {
-        EINA_ERROR_PERR("ERROR: Mempool for rectangle cannot be allocated in list init.\n");
+        ERR("Mempool for rectangle cannot be allocated in rectangle init.");
         goto init_error;
      }
 
-   return _eina_rectangle_init_count;
+   return EINA_TRUE;
 
  init_error:
-   eina_list_shutdown();
- list_init_error:
-   eina_mempool_shutdown();
- mempool_init_error:
-   eina_error_shutdown();
+   eina_log_domain_unregister(_eina_rectangle_log_dom);
+   _eina_rectangle_log_dom = -1;
 
-   return 0;
+   return EINA_FALSE;
 }
 
-EAPI int
+Eina_Bool
 eina_rectangle_shutdown(void)
 {
-   --_eina_rectangle_init_count;
+   Eina_Rectangle *del;
 
-   if (_eina_rectangle_init_count) return _eina_rectangle_init_count;
-
-   eina_list_shutdown();
+   while ((del = eina_trash_pop(&_eina_rectangles)))
+     eina_mempool_free(_eina_rectangle_mp, del);
+   _eina_rectangles_count = 0;
 
    eina_mempool_del(_eina_rectangle_alloc_mp);
    eina_mempool_del(_eina_rectangle_mp);
 
-   eina_mempool_shutdown();
-   eina_error_shutdown();
+   eina_log_domain_unregister(_eina_rectangle_log_dom);
+   _eina_rectangle_log_dom = -1;
 
-   return 0;
+   return EINA_TRUE;
 }
 
 EAPI Eina_Rectangle *
@@ -305,7 +313,15 @@ eina_rectangle_new(int x, int y, int w, int h)
 {
    Eina_Rectangle *rect;
 
-   rect = eina_mempool_malloc(_eina_rectangle_mp, sizeof (Eina_Rectangle));
+   if (_eina_rectangles)
+     {
+	rect = eina_trash_pop(&_eina_rectangles);
+	_eina_rectangles_count--;
+     }
+   else
+     {
+	rect = eina_mempool_malloc(_eina_rectangle_mp, sizeof (Eina_Rectangle));
+     }
    if (!rect) return NULL;
 
    EINA_RECTANGLE_SET(rect, x, y, w, h);
@@ -317,7 +333,16 @@ EAPI void
 eina_rectangle_free(Eina_Rectangle *rect)
 {
    EINA_SAFETY_ON_NULL_RETURN(rect);
-   eina_mempool_free(_eina_rectangle_mp, rect);
+
+   if (_eina_rectangles_count > BUCKET_THRESHOLD)
+     {
+	eina_mempool_free(_eina_rectangle_mp, rect);
+     }
+   else
+     {
+	eina_trash_push(&_eina_rectangles, rect);
+	_eina_rectangles_count++;
+     }
 }
 
 EAPI Eina_Rectangle_Pool *
@@ -331,10 +356,14 @@ eina_rectangle_pool_new(int w, int h)
    new->head = NULL;
    new->empty = eina_list_append(NULL, eina_rectangle_new(0, 0, w, h));
    new->references = 0;
+   new->sorted = EINA_FALSE;
    new->w = w;
    new->h = h;
+   new->bucket = NULL;
+   new->bucket_count = 0;
 
    EINA_MAGIC_SET(new, EINA_RECTANGLE_POOL_MAGIC);
+   DBG("pool=%p, size=(%d, %d)", new, w, h);
 
    return new;
 }
@@ -345,6 +374,8 @@ eina_rectangle_pool_free(Eina_Rectangle_Pool *pool)
    Eina_Rectangle_Alloc *del;
 
    EINA_SAFETY_ON_NULL_RETURN(pool);
+   DBG("pool=%p, size=(%d, %d), references=%u",
+       pool, pool->w, pool->h, pool->references);
    while (pool->head)
      {
 	del = (Eina_Rectangle_Alloc*) pool->head;
@@ -352,6 +383,12 @@ eina_rectangle_pool_free(Eina_Rectangle_Pool *pool)
 	pool->head = (EINA_INLIST_GET(del))->next;
 
 	EINA_MAGIC_SET(del, EINA_MAGIC_NONE);
+	eina_mempool_free(_eina_rectangle_alloc_mp, del);
+     }
+
+   while (pool->bucket)
+     {
+	del = eina_trash_pop(&pool->bucket);
 	eina_mempool_free(_eina_rectangle_alloc_mp, del);
      }
 
@@ -375,6 +412,9 @@ eina_rectangle_pool_request(Eina_Rectangle_Pool *pool, int w, int h)
 
    EINA_SAFETY_ON_NULL_RETURN_VAL(pool, NULL);
 
+   DBG("pool=%p, size=(%d, %d), references=%u",
+       pool, pool->w, pool->h, pool->references);
+
    if (w <= 0 || h <= 0) return NULL;
    if (w > pool->w || h > pool->h) return NULL;
 
@@ -389,8 +429,16 @@ eina_rectangle_pool_request(Eina_Rectangle_Pool *pool, int w, int h)
    if (x == -1) return NULL;
    pool->sorted = EINA_FALSE;
 
-   new = eina_mempool_malloc(_eina_rectangle_alloc_mp,
-			     sizeof (Eina_Rectangle_Alloc) + sizeof (Eina_Rectangle));
+   if (pool->bucket_count > 0)
+     {
+	new = eina_trash_pop(&pool->bucket);
+	pool->bucket_count--;
+     }
+   else
+     {
+	new = eina_mempool_malloc(_eina_rectangle_alloc_mp,
+				  sizeof (Eina_Rectangle_Alloc) + sizeof (Eina_Rectangle));
+     }
    if (!new) return NULL;
 
    rect = (Eina_Rectangle*) (new + 1);
@@ -402,6 +450,8 @@ eina_rectangle_pool_request(Eina_Rectangle_Pool *pool, int w, int h)
    new->pool = pool;
 
    EINA_MAGIC_SET(new, EINA_RECTANGLE_ALLOC_MAGIC);
+   DBG("rect=%p pool=%p, size=(%d, %d), references=%u",
+       rect, pool, pool->w, pool->h, pool->references);
 
    return rect;
 }
@@ -417,6 +467,9 @@ eina_rectangle_pool_release(Eina_Rectangle *rect)
    EINA_MAGIC_CHECK_RECTANGLE_ALLOC(era);
    EINA_MAGIC_CHECK_RECTANGLE_POOL(era->pool);
 
+   DBG("rect=%p pool=%p, size=(%d, %d), references=%u",
+       rect, era->pool, era->pool->w, era->pool->h, era->pool->references);
+
    era->pool->references--;
    era->pool->head = eina_inlist_remove(era->pool->head, EINA_INLIST_GET(era));
 
@@ -427,8 +480,20 @@ eina_rectangle_pool_release(Eina_Rectangle *rect)
 	era->pool->sorted = EINA_FALSE;
      }
 
-   EINA_MAGIC_SET(era, EINA_MAGIC_NONE);
-   eina_mempool_free(_eina_rectangle_alloc_mp, era);
+   if (era->pool->bucket_count < BUCKET_THRESHOLD)
+     {
+	Eina_Rectangle_Pool *pool;
+
+	pool = era->pool;
+
+	pool->bucket_count++;
+	eina_trash_push(&pool->bucket, era);
+     }
+   else
+     {
+	EINA_MAGIC_SET(era, EINA_MAGIC_NONE);
+	eina_mempool_free(_eina_rectangle_alloc_mp, era);
+     }
 }
 
 EAPI Eina_Rectangle_Pool *
@@ -449,6 +514,9 @@ eina_rectangle_pool_data_set(Eina_Rectangle_Pool *pool, const void *data)
 {
    EINA_MAGIC_CHECK_RECTANGLE_POOL(pool);
    EINA_SAFETY_ON_NULL_RETURN(pool);
+
+   DBG("data=%p pool=%p, size=(%d, %d), references=%u",
+       data, pool, pool->w, pool->h, pool->references);
 
    pool->data = (void*) data;
 }

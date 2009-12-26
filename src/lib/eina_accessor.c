@@ -25,10 +25,12 @@
 
 #include <stdlib.h>
 
+#include "eina_config.h"
 #include "eina_private.h"
 
-#include "eina_accessor.h"
+/* undefs EINA_ARG_NONULL() so NULL checks are not compiled out! */
 #include "eina_safety_checks.h"
+#include "eina_accessor.h"
 
 /*============================================================================*
  *                                  Local                                     *
@@ -37,6 +39,8 @@
 /**
  * @cond LOCAL
  */
+
+static const char EINA_MAGIC_ACCESSOR_STR[] = "Eina Accessor";
 
 #define EINA_MAGIC_CHECK_ACCESSOR(d)				\
   do {								\
@@ -75,6 +79,40 @@
  *
  * @{
  */
+
+/**
+ * @internal
+ * @brief Initialize the accessor module.
+ *
+ * @return #EINA_TRUE on success, #EINA_FALSE on failure.
+ *
+ * This function sets up the accessor module of Eina. It is called by
+ * eina_init().
+ *
+ * @see eina_init()
+ */
+Eina_Bool
+eina_accessor_init(void)
+{
+   return eina_magic_string_set(EINA_MAGIC_ACCESSOR, EINA_MAGIC_ACCESSOR_STR);
+}
+
+/**
+ * @internal
+ * @brief Shut down the accessor module.
+ *
+ * @return #EINA_TRUE on success, #EINA_FALSE on failure.
+ *
+ * This function shuts down the accessor module set up by
+ * eina_accessor_init(). It is called by eina_shutdown().
+ *
+ * @see eina_shutdown()
+ */
+Eina_Bool
+eina_accessor_shutdown(void)
+{
+   return EINA_TRUE;
+}
 
 /**
  * @brief Free an accessor.

@@ -23,6 +23,7 @@
 
 void eina_test_stringshare(TCase *tc);
 void eina_test_array(TCase *tc);
+void eina_test_log(TCase *tc);
 void eina_test_error(TCase *tc);
 void eina_test_magic(TCase *tc);
 void eina_test_inlist(TCase *tc);
@@ -40,5 +41,7 @@ void eina_test_file(TCase *tc);
 void eina_test_benchmark(TCase *tc);
 void eina_test_mempool(TCase *tc);
 void eina_test_rectangle(TCase *tc);
+void eina_test_matrixsparse(TCase *tc);
+void eina_test_tiler(TCase *tc);
 
 #endif /* EINA_SUITE_H_ */

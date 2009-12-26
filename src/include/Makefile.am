@@ -3,7 +3,12 @@ MAINTAINERCLEANFILES = Makefile.in
 EINAHEADERS = \
 eina_safety_checks.h \
 eina_error.h \
-eina_f16p16.h \
+eina_log.h \
+eina_fp.h \
+eina_inline_f32p32.x \
+eina_inline_f16p16.x \
+eina_inline_f8p24.x \
+eina_inline_fp.x \
 eina_hash.h \
 eina_inline_hash.x \
 eina_lalloc.h \
@@ -33,7 +38,10 @@ eina_trash.h \
 eina_iterator.h \
 eina_main.h \
 eina_cpu.h \
-eina_tiler.h
+eina_tiler.h \
+eina_hamster.h \
+eina_matrixsparse.h \
+eina_inline_tiler.x
 
 installed_mainheaderdir = $(includedir)/eina-@VMAJ@
 dist_installed_mainheader_DATA = Eina.h eina_config.h

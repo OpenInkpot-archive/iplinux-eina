@@ -31,39 +31,7 @@
  *
  * @section tutorial_error_basic_usage Basic Usage
  *
- * The first thing to do when using arrays is to initialize the array
- * module with eina_array_init() and, when no more arrays are used, the
- * module is shut down with eina_array_shutdown(). So a basic program
- * would look like that:
- *
- * @code
- * #include <stdlib.h>
- * #include <stdio.h>
- *
- * #include <eina_array.h>
- *
- * int main(void)
- * {
- *    if (!eina_array_init())
- *    {
- *        printf ("Error during the initialization of eina_error module\n");
- *        return EXIT_FAILURE;
- *    }
- *
- *    eina_array_shutdown();
- *
- *    return EXIT_SUCCESS;
- * }
- * @endcode
- *
- * All program using any module of eina must be compiled with the
- * following command:
- *
- * @code
- * gcc -o my_bin my_source.c `pkg-config --cflags --libs eina-0`
- * @endcode
- *
- * Then, an array must created with eina_array_new(). That function
+ * An array must created with eina_array_new(). That function
  * takes an integer as parameter, which is the count of pointers to
  * add when increasing the array size. Once the array is not used
  * anymore, it must be destroyed with eina_array_free().
@@ -97,15 +65,15 @@
  *     Eina_Array_Iterator iterator;
  *     unsigned int        i;
  *
- *     if (!eina_array_init())
+ *     if (!eina_init())
  *     {
- *         printf ("Error during the initialization of eina_error module\n");
+ *         printf ("Error during the initialization of eina\n");
  *         return EXIT_FAILURE;
  *     }
  *
  *     array = eina_array_new(16);
  *     if (!array)
- *         goto shutdown_array;
+ *         goto shutdown;
  *
  *     for (i = 0; i < 4; i++)
  *     {
@@ -127,12 +95,12 @@
  *     }
  *
  *     eina_array_free(array);
- *     eina_array_shutdown();
+ *     eina_shutdown();
  *
  *     return EXIT_SUCCESS;
  *
- *   shutdown_array:
- *     eina_array_shutdown();
+ *   shutdown:
+ *     eina_shutdown();
  *
  *     return EXIT_FAILURE;
  * }
@@ -150,12 +118,13 @@
 #include <string.h>
 #include <stdio.h>
 
-#include "eina_types.h"
-#include "eina_error.h"
-#include "eina_array.h"
-#include "eina_inline_array.x"
+#include "eina_config.h"
 #include "eina_private.h"
+#include "eina_error.h"
+
+/* undefs EINA_ARG_NONULL() so NULL checks are not compiled out! */
 #include "eina_safety_checks.h"
+#include "eina_array.h"
 
 /*============================================================================*
  *                                  Local                                     *
@@ -165,29 +134,33 @@
  * @cond LOCAL
  */
 
-#define EINA_MAGIC_CHECK_ARRAY(d)				\
-   do {								\
-     if (!EINA_MAGIC_CHECK(d, EINA_MAGIC_ARRAY))		\
-       EINA_MAGIC_FAIL(d, EINA_MAGIC_ARRAY);			\
-   } while (0);
+static const char EINA_MAGIC_ARRAY_STR[] = "Eina Array";
+static const char EINA_MAGIC_ARRAY_ITERATOR_STR[] = "Eina Array Iterator";
+static const char EINA_MAGIC_ARRAY_ACCESSOR_STR[] = "Eina Array Accessor";
 
-#define EINA_MAGIC_CHECK_ARRAY_ITERATOR(d, ...)		\
-   do {								\
+#define EINA_MAGIC_CHECK_ARRAY(d)			\
+  do {							\
+     if (!EINA_MAGIC_CHECK(d, EINA_MAGIC_ARRAY))	\
+       EINA_MAGIC_FAIL(d, EINA_MAGIC_ARRAY);		\
+  } while (0);
+
+#define EINA_MAGIC_CHECK_ARRAY_ITERATOR(d, ...)			\
+  do {								\
      if (!EINA_MAGIC_CHECK(d, EINA_MAGIC_ARRAY_ITERATOR))	\
        {							\
           EINA_MAGIC_FAIL(d, EINA_MAGIC_ARRAY_ITERATOR);	\
-          return __VA_ARGS__;						\
+          return __VA_ARGS__;					\
        }							\
-   } while (0);
+  } while (0);
 
-#define EINA_MAGIC_CHECK_ARRAY_ACCESSOR(d, ...)		\
-   do {								\
+#define EINA_MAGIC_CHECK_ARRAY_ACCESSOR(d, ...)			\
+  do {								\
      if (!EINA_MAGIC_CHECK(d, EINA_MAGIC_ARRAY_ACCESSOR))	\
        {							\
           EINA_MAGIC_FAIL(d, EINA_MAGIC_ACCESSOR);		\
-          return __VA_ARGS__;						\
+          return __VA_ARGS__;					\
        }							\
-   } while (0);
+  } while (0);
 
 
 typedef struct _Eina_Iterator_Array Eina_Iterator_Array;
@@ -209,7 +182,17 @@ struct _Eina_Accessor_Array
    EINA_MAGIC
 };
 
-static int _eina_array_init_count = 0;
+static int _eina_array_log_dom = -1;
+
+#ifdef ERR
+#undef ERR
+#endif
+#define ERR(...) EINA_LOG_DOM_ERR(_eina_array_log_dom, __VA_ARGS__)
+
+#ifdef DBG
+#undef DBG
+#endif
+#define DBG(...) EINA_LOG_DOM_DBG(_eina_array_log_dom, __VA_ARGS__)
 
 static void eina_array_iterator_free(Eina_Iterator_Array *it) EINA_ARG_NONNULL(1);
 static Eina_Array *eina_array_iterator_get_container(Eina_Iterator_Array *it) EINA_ARG_NONNULL(1);
@@ -284,7 +267,7 @@ eina_array_grow(Eina_Array *array)
    total = array->total + array->step;
    eina_error_set(0);
    tmp = realloc(array->data, sizeof (void*) * total);
-   if (UNLIKELY(!tmp)) {
+   if (EINA_UNLIKELY(!tmp)) {
       eina_error_set(EINA_ERROR_OUT_OF_MEMORY);
       return 0;
    }
@@ -319,9 +302,9 @@ eina_array_grow(Eina_Array *array)
  * data at any place, the Eina @ref Eina_List_Group is the correct container
  * to use.
  *
- * To use the array data type, eina_array_init() must be called before
- * any other array functions. When no more array function is used,
- * eina_array_shutdown() must be called to free all the resources.
+ * To use the array data type, eina_init() must be called before any
+ * other array functions. When eina is no more array function is used,
+ * eina_shutdown() must be called to free all the resources.
  *
  * An array must be created with eina_array_new(). It allocated all
  * the necessary data for an array. When not needed anymore, an array
@@ -347,84 +330,51 @@ eina_array_grow(Eina_Array *array)
  */
 
 /**
+ * @internal
  * @brief Initialize the array module.
  *
- * @return 1 or greater on success, 0 on error.
+ * @return #EINA_TRUE on success, #EINA_FALSE on failure.
  *
  * This function sets up the error and magic modules or Eina. It is
- * also called by eina_init(). It returns 0 on failure, otherwise it
- * returns the number of times it has already been called. See
- * eina_error_init() and eina_magic_string_init() for the
- * documentation of the initialisation of the dependency modules.
+ * called by eina_init().
  *
- * When no more Eina arrays are used, call eina_array_shutdown() to shut
- * down the array module.
- *
- * @see eina_error_init()
- * @see eina_magic_string_init()
  * @see eina_init()
  */
-EAPI int
+Eina_Bool
 eina_array_init(void)
 {
-   if (!_eina_array_init_count)
+   _eina_array_log_dom = eina_log_domain_register("eina_array", EINA_LOG_COLOR_DEFAULT);
+   if (_eina_array_log_dom < 0)
      {
-        if (!eina_error_init())
-          {
-             fprintf(stderr, "Could not initialize eina error module.\n");
-             return 0;
-          }
-
-        if (!eina_magic_string_init())
-          {
-             EINA_ERROR_PERR("ERROR: Could not initialize eina magic string module.\n");
-             eina_error_shutdown();
-             return 0;
-          }
-
-        eina_magic_string_set(EINA_MAGIC_ITERATOR,
-                              "Eina Iterator");
-        eina_magic_string_set(EINA_MAGIC_ACCESSOR,
-                              "Eina Accessor");
-        eina_magic_string_set(EINA_MAGIC_ARRAY,
-                              "Eina Array");
-        eina_magic_string_set(EINA_MAGIC_ARRAY_ITERATOR,
-                              "Eina Array Iterator");
-        eina_magic_string_set(EINA_MAGIC_ARRAY_ACCESSOR,
-                              "Eina Array Accessor");
+	EINA_LOG_ERR("Could not register log domain: eina_array");
+	return EINA_FALSE;
      }
 
-   return ++_eina_array_init_count;
+#define EMS(n) eina_magic_string_static_set(n, n##_STR)
+   EMS(EINA_MAGIC_ARRAY);
+   EMS(EINA_MAGIC_ARRAY_ITERATOR);
+   EMS(EINA_MAGIC_ARRAY_ACCESSOR);
+#undef EMS
+   return EINA_TRUE;
 }
 
 /**
+ * @internal
  * @brief Shut down the array module.
  *
- * @return 0 when the list module is completely shut down, 1 or
- * greater otherwise.
+ * @return #EINA_TRUE on success, #EINA_FALSE on failure.
  *
- * This function shuts down the array module. It returns 0 when it has
- * been called the same number of times than eina_array_init(). In
- * that case it shut down the magic and error modules. This function
- * is also called by eina_shutdown(). See eina_error_shutdown() and
- * eina_magic_string_shutdown() for the documentation of the
- * shutting down of the dependency modules.
+ * This function shuts down the array module set up by
+ * eina_array_init(). It is called by eina_shutdown().
  *
- * @see eina_error_shutdown()
- * @see eina_magic_string_shutdown()
  * @see eina_shutdown()
  */
-EAPI int
+Eina_Bool
 eina_array_shutdown(void)
 {
-   --_eina_array_init_count;
-   if (!_eina_array_init_count)
-     {
-       eina_magic_string_shutdown();
-       eina_error_shutdown();
-     }
-
-   return _eina_array_init_count;
+   eina_log_domain_unregister(_eina_array_log_dom);
+   _eina_array_log_dom = -1;
+   return EINA_TRUE;
 }
 
 /**
@@ -460,6 +410,8 @@ eina_array_new(unsigned int step)
    array->count = 0;
    array->step = step;
 
+   DBG("array=%p", array);
+
    return array;
 }
 
@@ -481,6 +433,7 @@ eina_array_free(Eina_Array *array)
 
    EINA_MAGIC_CHECK_ARRAY(array);
    EINA_SAFETY_ON_NULL_RETURN(array);
+   DBG("array=%p", array);
    MAGIC_FREE(array);
 }
 
@@ -503,6 +456,7 @@ eina_array_step_set(Eina_Array *array, unsigned int step)
   array->count = 0;
   array->step = step;
   EINA_MAGIC_SET(array, EINA_MAGIC_ARRAY);
+  DBG("array=%p, step=%u", array, step);
 }
 
 /**
@@ -520,6 +474,7 @@ eina_array_clean(Eina_Array *array)
    EINA_MAGIC_CHECK_ARRAY(array);
    EINA_SAFETY_ON_NULL_RETURN(array);
    array->count = 0;
+   DBG("array=%p", array);
 }
 
 /**
@@ -537,6 +492,7 @@ eina_array_flush(Eina_Array *array)
 {
    EINA_MAGIC_CHECK_ARRAY(array);
    EINA_SAFETY_ON_NULL_RETURN(array);
+   DBG("array=%p", array);
    array->count = 0;
    array->total = 0;
 
@@ -566,7 +522,11 @@ EAPI Eina_Bool
 eina_array_remove(Eina_Array *array, Eina_Bool (*keep)(void *data, void *gdata), void *gdata)
 {
    void **tmp;
-   void *data;
+   /* WARNING:
+      The algorithm does exit before using unitialized data. So compiler is
+      giving you a false positiv here too.
+    */
+   void *data = NULL;
    unsigned int total = 0;
    unsigned int limit;
    unsigned int i;
@@ -574,6 +534,8 @@ eina_array_remove(Eina_Array *array, Eina_Bool (*keep)(void *data, void *gdata),
    EINA_MAGIC_CHECK_ARRAY(array);
    EINA_SAFETY_ON_NULL_RETURN_VAL(array, EINA_FALSE);
    EINA_SAFETY_ON_NULL_RETURN_VAL(keep, EINA_FALSE);
+
+   DBG("array=%p, keep=%p, gdata=%p", array, keep, gdata);
 
    if (array->total == 0) return EINA_TRUE;
 
@@ -665,8 +627,6 @@ eina_array_iterator_new(const Eina_Array *array)
    EINA_MAGIC_CHECK_ARRAY(array);
    EINA_SAFETY_ON_NULL_RETURN_VAL(array, NULL);
 
-   if (eina_array_count_get(array) <= 0) return NULL;
-
    eina_error_set(0);
    it = calloc(1, sizeof (Eina_Iterator_Array));
    if (!it) {
@@ -682,6 +642,8 @@ eina_array_iterator_new(const Eina_Array *array)
    it->iterator.next = FUNC_ITERATOR_NEXT(eina_array_iterator_next);
    it->iterator.get_container = FUNC_ITERATOR_GET_CONTAINER(eina_array_iterator_get_container);
    it->iterator.free = FUNC_ITERATOR_FREE(eina_array_iterator_free);
+
+   DBG("array=%p, iterator=%p", array, it);
 
    return &it->iterator;
 }
@@ -721,6 +683,8 @@ eina_array_accessor_new(const Eina_Array *array)
    it->accessor.get_at = FUNC_ACCESSOR_GET_AT(eina_array_accessor_get_at);
    it->accessor.get_container = FUNC_ACCESSOR_GET_CONTAINER(eina_array_accessor_get_container);
    it->accessor.free = FUNC_ACCESSOR_FREE(eina_array_accessor_free);
+
+   DBG("array=%p, accessor=%p", array, it);
 
    return &it->accessor;
 }

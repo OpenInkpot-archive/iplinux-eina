@@ -23,7 +23,9 @@
 # include "config.h"
 #endif
 
-#include <stdint.h>
+#ifndef _MSC_VER
+# include <stdint.h>
+#endif
 #include <string.h>
 #include <assert.h>
 
@@ -65,7 +67,7 @@ _eina_rbtree_inlist_delta(void)
    void *a = &tmp.__rbtree;
    void *b = &tmp.__in_list;
 
-   return a - b;
+   return (char *)a - (char *)b;
 }
 
 static Eina_Rbtree_Direction
@@ -85,7 +87,7 @@ _eina_fixed_cmp_key(const Eina_Rbtree *node, const void *key, __UNUSED__ int len
    int limit;
 
    limit = sizeof (Eina_Fixed_Bitmap_Pool) + mp->item_size * 32;
-   delta = a - b;
+   delta = (char *)a - (char *)b;
 
    if (delta > 0)
      return 1;
@@ -157,7 +159,7 @@ eina_fixed_bitmap_free(void *data, void *ptr)
    if (pool->bitmask != 0xFFFFFFFF) push_front = EINA_TRUE;
 
    a = pool;
-   delta = (ptr - a - sizeof (Eina_Fixed_Bitmap_Pool)) / mp->item_size;
+   delta = ((char *)ptr - (char *)a - sizeof (Eina_Fixed_Bitmap_Pool)) / mp->item_size;
 
    assert(delta >= 0 && delta < 32);
 
@@ -203,23 +205,25 @@ eina_fixed_bitmap_shutdown(void *data)
    free(mp);
 }
 
-static Eina_Mempool_Backend mp_backend = {
-  .name ="fixed_bitmap",
-  .init = &eina_fixed_bitmap_init,
-  .shutdown = &eina_fixed_bitmap_shutdown,
-  .realloc = &eina_fixed_bitmap_realloc,
-  .alloc = &eina_fixed_bitmap_malloc,
-  .free = &eina_fixed_bitmap_free
+static Eina_Mempool_Backend _eina_fixed_bitmap_mp_backend = {
+   "fixed_bitmap",
+   &eina_fixed_bitmap_init,
+   &eina_fixed_bitmap_free,
+   &eina_fixed_bitmap_malloc,
+   &eina_fixed_bitmap_realloc,
+   NULL,
+   NULL,
+   &eina_fixed_bitmap_shutdown
 };
 
 Eina_Bool fixed_bitmap_init(void)
 {
-   return eina_mempool_register(&mp_backend);
+   return eina_mempool_register(&_eina_fixed_bitmap_mp_backend);
 }
 
 void fixed_bitmap_shutdown(void)
 {
-   eina_mempool_unregister(&mp_backend);
+   eina_mempool_unregister(&_eina_fixed_bitmap_mp_backend);
 }
 
 #ifndef EINA_STATIC_BUILD_FIXED_BITMAP

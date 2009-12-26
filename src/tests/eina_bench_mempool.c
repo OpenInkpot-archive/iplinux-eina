@@ -25,8 +25,7 @@
 #endif
 
 #include "eina_bench.h"
-#include "eina_array.h"
-#include "eina_mempool.h"
+#include "Eina.h"
 
 static void
 _eina_mempool_bench(Eina_Mempool *mp, int request)
@@ -35,7 +34,7 @@ _eina_mempool_bench(Eina_Mempool *mp, int request)
    int i;
    int j;
 
-   eina_array_init();
+   eina_init();
    array = eina_array_new(32);
 
    for (i = 0; i < 100; ++i)
@@ -52,7 +51,7 @@ _eina_mempool_bench(Eina_Mempool *mp, int request)
      }
 
    eina_array_free(array);
-   eina_array_shutdown();
+   eina_shutdown();
 }
 
 static void
@@ -115,7 +114,7 @@ eina_mempool_glib(int request)
    int i;
    int j;
 
-   eina_array_init();
+   eina_init();
    array = eina_array_new(32);
 
    for (i = 0; i < 100; ++i)
@@ -132,7 +131,7 @@ eina_mempool_glib(int request)
      }
 
    eina_array_free(array);
-   eina_array_shutdown();
+   eina_shutdown();
 
 }
 #endif

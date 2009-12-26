@@ -28,10 +28,13 @@
 #endif
 
 #include "eina_config.h"
-#include "eina_magic.h"
 #include "eina_private.h"
 #include "eina_error.h"
-#include "eina_inlist.h"
+#include "eina_log.h"
+
+/* undefs EINA_ARG_NONULL() so NULL checks are not compiled out! */
+#include "eina_safety_checks.h"
+#include "eina_magic.h"
 
 /*============================================================================*
  *                                  Local                                     *
@@ -41,21 +44,76 @@
  * @cond LOCAL
  */
 
-#ifdef EINA_MAGIC_DEBUG
-
 typedef struct _Eina_Magic_String Eina_Magic_String;
 struct _Eina_Magic_String
 {
-   EINA_INLIST;
-
-   char *string;
    Eina_Magic magic;
+   Eina_Bool string_allocated;
+   const char *string;
 };
 
-static int _eina_magic_string_count = 0;
-static Eina_Inlist *strings = NULL;
+static int _eina_magic_string_log_dom = -1;
 
+#ifdef ERR
+#undef ERR
 #endif
+#define ERR(...) EINA_LOG_DOM_ERR(_eina_magic_string_log_dom, __VA_ARGS__)
+
+#ifdef DBG
+#undef DBG
+#endif
+#define DBG(...) EINA_LOG_DOM_DBG(_eina_magic_string_log_dom, __VA_ARGS__)
+
+static Eina_Magic_String *_eina_magic_strings = NULL;
+static size_t _eina_magic_strings_count = 0;
+static size_t _eina_magic_strings_allocated = 0;
+static Eina_Bool _eina_magic_strings_dirty = 0;
+
+static int
+_eina_magic_strings_sort_cmp(const void *p1, const void *p2)
+{
+   const Eina_Magic_String *a = p1, *b = p2;
+   return a->magic - b->magic;
+}
+
+static int
+_eina_magic_strings_find_cmp(const void *p1, const void *p2)
+{
+   Eina_Magic a = (long)p1;
+   const Eina_Magic_String *b = p2;
+   return a - b->magic;
+}
+
+static Eina_Magic_String *
+_eina_magic_strings_alloc(void)
+{
+   size_t idx;
+
+   if (_eina_magic_strings_count == _eina_magic_strings_allocated)
+     {
+	void *tmp;
+	size_t size;
+
+	if (EINA_UNLIKELY(_eina_magic_strings_allocated == 0))
+	  size = 48;
+	else
+	  size = _eina_magic_strings_allocated + 16;
+
+	tmp = realloc(_eina_magic_strings, sizeof(Eina_Magic_String) * size);
+	if (!tmp)
+	  {
+	     ERR("could not realloc magic_strings from %zu to %zu buckets.",
+		 _eina_magic_strings_allocated, size);
+	     return NULL;
+	  }
+	_eina_magic_strings = tmp;
+	_eina_magic_strings_allocated = size;
+     }
+
+   idx = _eina_magic_strings_count;
+   _eina_magic_strings_count++;
+   return _eina_magic_strings + idx;
+}
 
 /**
  * @endcond
@@ -78,74 +136,63 @@ static Eina_Inlist *strings = NULL;
  */
 
 /**
- * @brief Initialize the magic module.
+ * @internal
+ * @brief Initialize the magic string module.
  *
- * @return 1 or greater.
+ * @return #EINA_TRUE on success, #EINA_FALSE on failure.
  *
- * This function just increases a reference counter. If the magic
- * module is disabled at configure time, then it always returns @c 1.
- *
- * Once the magic module is not used anymore, then
- * eina_magic_shutdown() must be called to shut down the magic
- * module.
+ * This function sets up the magic string module of Eina. It is called by
+ * eina_init().
  *
  * @see eina_init()
  */
-EAPI int
+Eina_Bool
 eina_magic_string_init(void)
 {
-#ifdef EINA_MAGIC_DEBUG
-   ++_eina_magic_string_count;
+   _eina_magic_string_log_dom = eina_log_domain_register
+     ("eina_magic_string", EINA_LOG_COLOR_DEFAULT);
+   if (_eina_magic_string_log_dom < 0)
+     {
+	EINA_LOG_ERR("Could not register log domain: eina_magic_string");
+	return EINA_FALSE;
+     }
 
-   return _eina_magic_string_count;
-#else
-   return 1;
-#endif
+   return EINA_TRUE;
 }
 
 /**
- * @brief Shut down the magic module.
+ * @internal
+ * @brief Shut down the magic string module.
  *
- * @return 0 when the magic module is completely shut down, 1 or
- * greater otherwise.
+ * @return #EINA_TRUE on success, #EINA_FALSE on failure.
  *
- * This function shuts down the magic module set up by
- * eina_magic_string_init(). It is called by eina_shutdown() and by
- * all modules shutdown functions. It returns 0 when it is called the
- * same number of times than eina_magic_string_init(). In that case it
- * clears the magic list and return @c 0. If the magic module is
- * disabled at configure time, then it always returns @c 0.
+ * This function shuts down the magic string module set up by
+ * eina_magic string_init(). It is called by eina_shutdown().
  *
  * @see eina_shutdown()
  */
-EAPI int
+Eina_Bool
 eina_magic_string_shutdown(void)
 {
-#ifdef EINA_MAGIC_DEBUG
-   --_eina_magic_string_count;
+   Eina_Magic_String *ems, *ems_end;
 
-   if (_eina_magic_string_count == 0)
-     {
-	/* Free all strings. */
-	while (strings)
-	  {
-	     Eina_Magic_String *tmp;
+   ems = _eina_magic_strings;
+   ems_end = ems + _eina_magic_strings_count;
 
-	     tmp = (Eina_Magic_String*) strings;
-	     strings = eina_inlist_remove(strings, strings);
+   for (; ems < ems_end; ems++)
+     if (ems->string_allocated)
+       free((char *)ems->string);
 
-	     free(tmp->string);
-	     free(tmp);
-	  }
-     }
+   free(_eina_magic_strings);
+   _eina_magic_strings = NULL;
+   _eina_magic_strings_count = 0;
+   _eina_magic_strings_allocated = 0;
 
-   return _eina_magic_string_count;
-#else
-   return 0;
-#endif
+   eina_log_domain_unregister(_eina_magic_string_log_dom);
+   _eina_magic_string_log_dom = -1;
+
+   return EINA_TRUE;
 }
-
-#ifdef EINA_MAGIC_DEBUG
 
 /**
  * @brief Return the string associated to the given magic identifier.
@@ -162,10 +209,21 @@ eina_magic_string_get(Eina_Magic magic)
 {
    Eina_Magic_String *ems;
 
-   EINA_INLIST_FOREACH(strings, ems)
-     if (ems->magic == magic)
-       return ems->string;
+   if (!_eina_magic_strings)
+     return NULL;
 
+   if (_eina_magic_strings_dirty)
+     {
+	qsort(_eina_magic_strings, _eina_magic_strings_count,
+	      sizeof(Eina_Magic_String), _eina_magic_strings_sort_cmp);
+	_eina_magic_strings_dirty = 0;
+     }
+
+   ems = bsearch((void *)(long)magic, _eina_magic_strings,
+		 _eina_magic_strings_count, sizeof(Eina_Magic_String),
+		 _eina_magic_strings_find_cmp);
+   if (ems)
+     return ems->string;
    return NULL;
 }
 
@@ -173,40 +231,79 @@ eina_magic_string_get(Eina_Magic magic)
  * @brief Set the string associated to the given magic identifier.
  *
  * @param magic The magic identifier.
- * @param The string associated to the identifier.
+ * @param The string associated to the identifier, must not be @c NULL.
  *
- * This function sets the string @p magic_name to @p magic. If a
- * string is already associated to @p magic, then it is freed and @p
- * magic_name is duplicated. Otherwise, it is added to the list of
- * magic strings.
+ * @return #EINA_TRUE on success, #EINA_FALSE on failure.
+ *
+ * This function sets the string @p magic_name to @p magic. It is not
+ * checked if number or string are already set, then you might end
+ * with duplicates in that case.
+ *
+ * @see eina_magic_string_static_set()
  */
-EAPI void
+EAPI Eina_Bool
 eina_magic_string_set(Eina_Magic magic, const char *magic_name)
 {
    Eina_Magic_String *ems;
 
-   EINA_INLIST_FOREACH(strings, ems)
-     if (ems->magic == magic)
-       {
-	  free(ems->string);
-	  if (magic_name)
-	    ems->string = strdup(magic_name);
-	  else
-	    ems->string = NULL;
-	  return ;
-       }
+   EINA_SAFETY_ON_NULL_RETURN_VAL(magic_name, EINA_FALSE);
 
-   ems = malloc(sizeof (Eina_Magic_String));
+   ems = _eina_magic_strings_alloc();
    if (!ems)
-     return;
-   ems->magic = magic;
-   if (magic_name)
-     ems->string = strdup(magic_name);
-   else
-     ems->string = NULL;
+     return EINA_FALSE;
 
-   strings = eina_inlist_prepend(strings, EINA_INLIST_GET(ems));
+   ems->magic = magic;
+   ems->string_allocated = EINA_TRUE;
+   ems->string = strdup(magic_name);
+   if (!ems->string)
+     {
+	ERR("could not allocate string '%s'", magic_name);
+	_eina_magic_strings_count--;
+	return EINA_FALSE;
+     }
+
+   _eina_magic_strings_dirty = 1;
+   return EINA_TRUE;
 }
+
+/**
+ * @brief Set the string associated to the given magic identifier.
+ *
+ * @param magic The magic identifier.
+ * @param The string associated to the identifier, must not be @c NULL,
+ *        it will not be duplcated, just referenced thus it must be live
+ *        during magic number usage.
+ *
+ * @return #EINA_TRUE on success, #EINA_FALSE on failure.
+ *
+ * This function sets the string @p magic_name to @p magic. It is not
+ * checked if number or string are already set, then you might end
+ * with duplicates in that case.
+ *
+ * @see eina_magic_string_set()
+ */
+EAPI Eina_Bool
+eina_magic_string_static_set(Eina_Magic magic, const char *magic_name)
+{
+   Eina_Magic_String *ems;
+
+   EINA_SAFETY_ON_NULL_RETURN_VAL(magic_name, EINA_FALSE);
+
+   ems = _eina_magic_strings_alloc();
+   if (!ems)
+     return EINA_FALSE;
+
+   ems->magic = magic;
+   ems->string_allocated = EINA_FALSE;
+   ems->string = magic_name;
+
+   _eina_magic_strings_dirty = 1;
+   return EINA_TRUE;
+}
+
+#ifdef eina_magic_fail
+# undef eina_magic_fail
+#endif
 
 /**
  * @brief Display a message or abort is a magic check failed.
@@ -235,47 +332,48 @@ EAPI void
 eina_magic_fail(void *d, Eina_Magic m, Eina_Magic req_m, const char *file, const char *fnc, int line)
 {
    if (!d)
-     eina_error_print(EINA_ERROR_LEVEL_ERR, file, fnc, line,
-		      "*** Eina Magic Check Failed !!!\n"
-		      "    Input handle pointer is NULL !\n"
-		      "*** NAUGHTY PROGRAMMER!!!\n"
-	              "*** SPANK SPANK SPANK!!!\n"
-	              "*** Now go fix your code. Tut tut tut!\n"
-		      "\n");
+     eina_log_print(EINA_LOG_DOMAIN_GLOBAL, EINA_LOG_LEVEL_CRITICAL,
+		    file, fnc, line,
+		    "*** Eina Magic Check Failed !!!\n"
+		    "    Input handle pointer is NULL !\n"
+		    "*** NAUGHTY PROGRAMMER!!!\n"
+		    "*** SPANK SPANK SPANK!!!\n"
+		    "*** Now go fix your code. Tut tut tut!\n"
+		    "\n");
    else
      if (m == EINA_MAGIC_NONE)
-       eina_error_print(EINA_ERROR_LEVEL_ERR, file, fnc, line,
-			"*** Eina Magic Check Failed !!!\n"
-			"    Input handle has already been freed!\n"
-			"*** NAUGHTY PROGRAMMER!!!\n"
-			"*** SPANK SPANK SPANK!!!\n"
-			"*** Now go fix your code. Tut tut tut!\n"
-			"\n");
+       eina_log_print(EINA_LOG_DOMAIN_GLOBAL, EINA_LOG_LEVEL_CRITICAL,
+		      file, fnc, line,
+		      "*** Eina Magic Check Failed !!!\n"
+		      "    Input handle has already been freed!\n"
+		      "*** NAUGHTY PROGRAMMER!!!\n"
+		      "*** SPANK SPANK SPANK!!!\n"
+		      "*** Now go fix your code. Tut tut tut!\n"
+		      "\n");
      else
        if (m != req_m)
-	 eina_error_print(EINA_ERROR_LEVEL_ERR, file, fnc, line,
-			  "*** Eina Magic Check Failed !!!\n"
-			  "    Input handle is wrong type\n"
-			  "    Expected: %08x - %s\n"
-			  "    Supplied: %08x - %s\n"
-			  "*** NAUGHTY PROGRAMMER!!!\n"
-			  "*** SPANK SPANK SPANK!!!\n"
-			  "*** Now go fix your code. Tut tut tut!\n"
-			  "\n",
-			  req_m, eina_magic_string_get(req_m),
-			  m, eina_magic_string_get(m));
+       eina_log_print(EINA_LOG_DOMAIN_GLOBAL, EINA_LOG_LEVEL_CRITICAL,
+		      file, fnc, line,
+		      "*** Eina Magic Check Failed !!!\n"
+		      "    Input handle is wrong type\n"
+		      "    Expected: %08x - %s\n"
+		      "    Supplied: %08x - %s\n"
+		      "*** NAUGHTY PROGRAMMER!!!\n"
+		      "*** SPANK SPANK SPANK!!!\n"
+		      "*** Now go fix your code. Tut tut tut!\n"
+		      "\n",
+		      req_m, eina_magic_string_get(req_m),
+		      m, eina_magic_string_get(m));
        else
-	 eina_error_print(EINA_ERROR_LEVEL_ERR, file, fnc, line,
-			  "*** Eina Magic Check Failed !!!\n"
-			  "    Why did you call me !\n"
-			  "*** NAUGHTY PROGRAMMER!!!\n"
-			  "*** SPANK SPANK SPANK!!!\n"
-			  "*** Now go fix your code. Tut tut tut!\n"
-			  "\n");
-   if (getenv("EINA_ERROR_ABORT")) abort();
+       eina_log_print(EINA_LOG_DOMAIN_GLOBAL, EINA_LOG_LEVEL_CRITICAL,
+		      file, fnc, line,
+		      "*** Eina Magic Check Failed !!!\n"
+		      "    Why did you call me !\n"
+		      "*** NAUGHTY PROGRAMMER!!!\n"
+		      "*** SPANK SPANK SPANK!!!\n"
+		      "*** Now go fix your code. Tut tut tut!\n"
+		      "\n");
 }
-
-#endif
 
 /**
  * @}

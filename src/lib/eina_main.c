@@ -22,17 +22,22 @@
 # include "config.h"
 #endif
 
+#include "eina_config.h"
+#include "eina_private.h"
 #include "eina_types.h"
 #include "eina_main.h"
 #include "eina_error.h"
+#include "eina_log.h"
 #include "eina_hash.h"
 #include "eina_stringshare.h"
 #include "eina_list.h"
+#include "eina_matrixsparse.h"
 #include "eina_array.h"
 #include "eina_counter.h"
 #include "eina_benchmark.h"
 #include "eina_magic.h"
 #include "eina_rectangle.h"
+#include "eina_safety_checks.h"
 
 /*============================================================================*
  *                                  Local                                     *
@@ -43,6 +48,96 @@
  */
 
 static int _eina_main_count = 0;
+static int _eina_main_thread_count = 0;
+static int _eina_log_dom = -1;
+
+#ifdef ERR
+#undef ERR
+#endif
+#define ERR(...) EINA_LOG_DOM_ERR(_eina_log_dom, __VA_ARGS__)
+
+#ifdef DBG
+#undef DBG
+#endif
+#define DBG(...) EINA_LOG_DOM_DBG(_eina_log_dom, __VA_ARGS__)
+
+#ifdef EFL_HAVE_PTHREAD
+#include <pthread.h>
+static Eina_Bool _threads_activated = EINA_FALSE;
+static pthread_mutex_t _mutex = PTHREAD_MUTEX_INITIALIZER;
+#define LOCK() if(_threads_activated) pthread_mutex_lock(&_mutex);
+#define UNLOCK() if(_threads_activated) pthread_mutex_unlock(&_mutex);
+#define UNLOCK_FORCE() pthread_mutex_unlock(&_mutex);
+#else
+#define LOCK() do {} while (0)
+#define UNLOCK() do {} while (0)
+#define UNLOCK_FORCE() do {} while (0)
+#endif
+
+/* place module init/shutdown functions here to avoid other modules
+ * calling them by mistake.
+ */
+#define S(x) extern Eina_Bool eina_##x##_init(void); extern Eina_Bool eina_##x##_shutdown(void)
+S(log);
+S(error);
+S(safety_checks);
+S(magic_string);
+S(iterator);
+S(accessor);
+S(array);
+S(module);
+S(mempool);
+S(list);
+S(stringshare);
+S(matrixsparse);
+S(convert);
+S(counter);
+S(benchmark);
+S(rectangle);
+#undef S
+
+struct eina_desc_setup
+{
+   const char *name;
+   Eina_Bool (*init)(void);
+   Eina_Bool (*shutdown)(void);
+};
+
+static const struct eina_desc_setup _eina_desc_setup[] = {
+#define S(x) {#x, eina_##x##_init, eina_##x##_shutdown}
+  /* log is a special case as it needs printf */
+  S(error),
+  S(safety_checks),
+  S(magic_string),
+  S(iterator),
+  S(accessor),
+  S(array),
+  S(module),
+  S(mempool),
+  S(list),
+  S(stringshare),
+  S(matrixsparse),
+  S(convert),
+  S(counter),
+  S(benchmark),
+  S(rectangle)
+#undef S
+};
+static const size_t _eina_desc_setup_len = sizeof(_eina_desc_setup) / sizeof(_eina_desc_setup[0]);
+
+static void
+_eina_shutdown_from_desc(const struct eina_desc_setup *itr)
+{
+   for (itr--; itr >= _eina_desc_setup; itr--)
+     {
+	if (!itr->shutdown())
+	  ERR("Problems shutting down eina module '%s', ignored.", itr->name);
+     }
+
+   eina_log_domain_unregister(_eina_log_dom);
+   _eina_log_dom = -1;
+   eina_log_shutdown();
+}
 
 /**
  * @endcond
@@ -73,18 +168,7 @@ static int _eina_main_count = 0;
  * This function sets up all the eina modules. It returns 0 on
  * failure (that is, when one of the module fails to initialize),
  * otherwise it returns the number of times it has already been
- * called. The list of initialisation functions that are called are
- * (in that order):
- *
- * @li eina_error_init()
- * @li eina_hash_init()
- * @li eina_stringshare_init()
- * @li eina_list_init()
- * @li eina_array_init()
- * @li eina_counter_init()
- * @li eina_benchmark_init()
- * @li eina_magic_string_init()
- * @li eina_rectangle_init()
+ * called.
  *
  * When Eina is not used anymore, call eina_shutdown() to shut down
  * the Eina library.
@@ -92,74 +176,38 @@ static int _eina_main_count = 0;
 EAPI int
 eina_init(void)
 {
-   if (_eina_main_count) goto finish_init;
+   const struct eina_desc_setup *itr, *itr_end;
 
-   if (!eina_error_init())
+   if (EINA_LIKELY(_eina_main_count > 0))
+     return ++_eina_main_count;
+
+   if (!eina_log_init())
      {
-        fprintf(stderr, "Could not initialize eina error module.\n");
-        return 0;
+	fprintf(stderr, "Could not initialize eina logging system.\n");
+	return 0;
      }
-   if (!eina_hash_init())
+   _eina_log_dom = eina_log_domain_register("eina", EINA_LOG_COLOR_DEFAULT);
+   if (_eina_log_dom < 0)
      {
-        EINA_ERROR_PERR("Could not initialize eina hash module.\n");
-        goto hash_init_error;
-     }
-   if (!eina_stringshare_init())
-     {
-        EINA_ERROR_PERR("Could not initialize eina stringshare module.\n");
-        goto stringshare_init_error;
-     }
-   if (!eina_list_init())
-     {
-        EINA_ERROR_PERR("Could not initialize eina list module.\n");
-        goto list_init_error;
-     }
-   if (!eina_array_init())
-     {
-        EINA_ERROR_PERR("Could not initialize eina array module.\n");
-        goto array_init_error;
-     }
-   if (!eina_counter_init())
-     {
-        EINA_ERROR_PERR("Could not initialize eina counter module.\n");
-        goto counter_init_error;
-     }
-   if (!eina_benchmark_init())
-     {
-        EINA_ERROR_PERR("Could not initialize eina benchmark module.\n");
-        goto benchmark_init_error;
-     }
-   if (!eina_magic_string_init())
-     {
-        EINA_ERROR_PERR("Could not initialize eina magic string module.\n");
-        goto magic_string_init_error;
-     }
-   if (!eina_rectangle_init())
-     {
-        EINA_ERROR_PERR("Could not initialize eina rectangle module.\n");
-        goto rectangle_init_error;
+	EINA_LOG_ERR("Could not register log domain: eina");
+	eina_log_shutdown();
+	return 0;
      }
 
- finish_init:
-   return ++_eina_main_count;
+   itr = _eina_desc_setup;
+   itr_end = itr + _eina_desc_setup_len;
+   for (; itr < itr_end; itr++)
+     {
+	if (!itr->init())
+	  {
+	     ERR("Could not initialize eina module '%s'.", itr->name);
+	     _eina_shutdown_from_desc(itr);
+	     return 0;
+	  }
+     }
 
- rectangle_init_error:
-   eina_magic_string_shutdown();
- magic_string_init_error:
-   eina_benchmark_shutdown();
- benchmark_init_error:
-   eina_counter_shutdown();
- counter_init_error:
-   eina_array_shutdown();
- array_init_error:
-   eina_list_shutdown();
- list_init_error:
-   eina_stringshare_shutdown();
- stringshare_init_error:
-   eina_hash_shutdown();
- hash_init_error:
-   eina_error_shutdown();
-   return 0;
+   _eina_main_count = 1;
+   return 1;
 }
 
 /**
@@ -170,18 +218,7 @@ eina_init(void)
  *
  * This function shuts down the Eina library. It returns 0 when it has
  * been called the same number of times than eina_init(). In that case
- * it shut down all the Eina modules. The list of shut down functions
- * that are called are (in that order):
- *
- * @li eina_rectangle_init()
- * @li eina_magic_string_init()
- * @li eina_benchmark_init()
- * @li eina_counter_init()
- * @li eina_array_init()
- * @li eina_list_init()
- * @li eina_stringshare_init()
- * @li eina_hash_init()
- * @li eina_error_init()
+ * it shut down all the Eina modules.
  *
  * Once this function succeeds (that is, @c 0 is returned), you must
  * not call any of the Eina function anymore. You must call
@@ -190,20 +227,91 @@ eina_init(void)
 EAPI int
 eina_shutdown(void)
 {
-   if (_eina_main_count != 1) goto finish_shutdown;
+   _eina_main_count--;
+   if (EINA_UNLIKELY(_eina_main_count == 0))
+     _eina_shutdown_from_desc(_eina_desc_setup + _eina_desc_setup_len);
+   return _eina_main_count;
+}
 
-   eina_rectangle_shutdown();
-   eina_magic_string_shutdown();
-   eina_benchmark_shutdown();
-   eina_counter_shutdown();
-   eina_array_shutdown();
-   eina_list_shutdown();
-   eina_stringshare_shutdown();
-   eina_hash_shutdown();
-   eina_error_shutdown();
 
- finish_shutdown:
-   return --_eina_main_count;
+/**
+ * @brief Initialize the mutexs of the Eina library.
+ *
+ * @return 1 or greater on success, 0 on error.
+ *
+ * This function sets up all the mutexs in all eina modules. It returns 0 on
+ * failure (that is, when one of the module fails to initialize),
+ * otherwise it returns the number of times it has already been
+ * called.
+ *
+ * When the mutexs are not used anymore, call eina_thread_shutdown() to shut down
+ * the mutexs.
+ */
+EAPI int
+eina_threads_init(void)
+{
+#ifdef EFL_HAVE_PTHREAD
+    int ret;
+    
+    LOCK();
+    ++_eina_main_thread_count;
+    ret = _eina_main_thread_count;
+
+    if(_eina_main_thread_count > 1) 
+    {
+        UNLOCK();
+        return ret;
+    }
+
+    eina_stringshare_threads_init();
+    eina_log_threads_init();
+    _threads_activated = EINA_TRUE;
+
+    return ret;
+#else
+    return 0;
+#endif
+}
+
+/**
+ * @brief Shut down mutexs in the Eina library.
+ *
+ * @return 0 when all mutexs are completely shut down, 1 or
+ * greater otherwise.
+ *
+ * This function shuts down the mutexs in the Eina library. It returns 0 when it has
+ * been called the same number of times than eina_thread_init(). In that case
+ * it shut down all the mutexs.
+ *
+ * Once this function succeeds (that is, @c 0 is returned), you must
+ * not call any of the Eina function in a thread anymore. You must call
+ * eina_thread_init() again to use the Eina functions in a thread again.
+ */
+EAPI int
+eina_threads_shutdown(void)
+{
+#ifdef EFL_HAVE_PTHREAD
+    int ret;
+
+    LOCK();
+    ret = --_eina_main_thread_count;
+    if(_eina_main_thread_count > 0) 
+    {
+        UNLOCK();
+        return ret; 
+    }
+
+    eina_stringshare_threads_shutdown();
+    eina_log_threads_shutdown();
+
+    _threads_activated = EINA_FALSE;
+
+    UNLOCK_FORCE();
+
+    return ret;
+#else
+    return 0;
+#endif
 }
 
 /**

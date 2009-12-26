@@ -1,3 +1,5 @@
+// vim:ts=8:sw=3:sts=8:noexpandtab:cino=>5n-3f0^-2{2
+
 /* EINA - EFL data type library
  * Copyright (C) 2002-2008 Carsten Haitzler, Gustavo Sverzut Barbieri, Tilman Sauerbeck,
  *                         Vincent Torri, Cedric Bail, Jorge Luis Zapata Muga,
@@ -73,11 +75,13 @@
 #endif
 
 #include "eina_config.h"
-#include "eina_error.h"
-#include "eina_list.h"
-#include "eina_mempool.h"
 #include "eina_private.h"
+#include "eina_error.h"
+#include "eina_mempool.h"
+
+/* undefs EINA_ARG_NONULL() so NULL checks are not compiled out! */
 #include "eina_safety_checks.h"
+#include "eina_list.h"
 
 
 /*============================================================================*
@@ -87,6 +91,12 @@
 /**
  * @cond LOCAL
  */
+
+static const char EINA_MAGIC_LIST_STR[] = "Eina List";
+static const char EINA_MAGIC_LIST_ITERATOR_STR[] = "Eina List Iterator";
+static const char EINA_MAGIC_LIST_ACCESSOR_STR[] = "Eina List Accessor";
+static const char EINA_MAGIC_LIST_ACCOUNTING_STR[] = "Eina List Accounting";
+
 
 #define EINA_MAGIC_CHECK_LIST(d, ...)				\
   do {								\
@@ -151,9 +161,19 @@ struct _Eina_Accessor_List
    EINA_MAGIC
 };
 
-static int _eina_list_init_count = 0;
 static Eina_Mempool *_eina_list_mp = NULL;
 static Eina_Mempool *_eina_list_accounting_mp = NULL;
+static int _eina_list_log_dom = -1;
+
+#ifdef ERR
+#undef ERR
+#endif
+#define ERR(...) EINA_LOG_DOM_ERR(_eina_list_log_dom, __VA_ARGS__)
+
+#ifdef DBG
+#undef DBG
+#endif
+#define DBG(...) EINA_LOG_DOM_DBG(_eina_list_log_dom, __VA_ARGS__)
 
 static inline Eina_List_Accounting*
 _eina_list_mempool_accounting_new(__UNUSED__ Eina_List *list)
@@ -250,7 +270,7 @@ eina_list_iterator_next(Eina_Iterator_List *it, void **data)
    EINA_MAGIC_CHECK_LIST_ITERATOR(it, EINA_FALSE);
 
    if (it->current == NULL) return EINA_FALSE;
-   if (data) *data = eina_list_data_get(it->current);
+   *data = eina_list_data_get(it->current);
 
    it->current = eina_list_next(it->current);
 
@@ -263,7 +283,7 @@ eina_list_iterator_prev(Eina_Iterator_List *it, void **data)
    EINA_MAGIC_CHECK_LIST_ITERATOR(it, EINA_FALSE);
 
    if (it->current == NULL) return EINA_FALSE;
-   if (data) *data = eina_list_data_get(it->current);
+   *data = eina_list_data_get(it->current);
 
    it->current = eina_list_prev(it->current);
 
@@ -295,7 +315,7 @@ eina_list_accessor_get_at(Eina_Accessor_List *it, unsigned int index, void **dat
 
    EINA_MAGIC_CHECK_LIST_ACCESSOR(it, EINA_FALSE);
 
-   if (index > eina_list_count(it->head)) return EINA_FALSE;
+   if (index >= eina_list_count(it->head)) return EINA_FALSE;
 
    if (it->index == index)
      {
@@ -351,7 +371,7 @@ eina_list_accessor_get_at(Eina_Accessor_List *it, unsigned int index, void **dat
    it->current = over;
    it->index = index;
 
-   if (data) *data = eina_list_data_get(it->current);
+   *data = eina_list_data_get(it->current);
    return EINA_TRUE;
 }
 
@@ -431,130 +451,92 @@ eina_list_sort_merge(Eina_List *a, Eina_List *b, Eina_Compare_Cb func)
  */
 
 /**
+ * @internal
  * @brief Initialize the list module.
  *
- * @return 1 or greater on success, 0 on error.
+ * @return #EINA_TRUE on success, #EINA_FALSE on failure.
  *
- * This function sets up the error, magic and mempool modules of
- * Eina. It is also called by eina_init(). It returns 0 on failure,
- * otherwise it returns the number of times it has already been
- * called. If Eina has been configured with the default memory pool,
- * then the memory pool used in an Eina list will be
- * "pass_through". Otherwise, the environment variable EINA_MEMPOOL is
- * read and its value is chosen as memory pool ; if EINA_MEMPOOL is
- * not defined, then the "chained_mempool" memory pool is chosen. If
- * the memory pool is not found, then eina_list_init() return @c 0.
- * See eina_error_init(), eina_magic_string_init() and
- * eina_mempool_init() for the documentation of the initialisation of
- * the dependency modules.
+ * This function sets up the list module of Eina. It is called by
+ * eina_init().
  *
- * When no more Eina lists are used, call eina_list_shutdown() to shut
- * down the list module.
+ * This function creates mempool to speed up list node and accounting
+ * management, using EINA_MEMPOOL environment variable if it is set to
+ * choose the memory pool type to use.
  *
- * @see eina_error_init()
- * @see eina_magic_string_init()
- * @see eina_mempool_init()
+ * @see eina_init()
  */
-EAPI int
+Eina_Bool
 eina_list_init(void)
 {
-   const char *choice;
+   const char *choice, *tmp;
 
-   if (!_eina_list_init_count)
+   _eina_list_log_dom = eina_log_domain_register("eina_list", EINA_LOG_COLOR_DEFAULT);
+   if (_eina_list_log_dom < 0)
      {
-	if (!eina_error_init())
-	  {
-	     fprintf(stderr, "Could not initialize eina error module\n");
-	     return 0;
-	  }
-
-	if (!eina_magic_string_init())
-	  {
-	     EINA_ERROR_PERR("ERROR: Could not initialize eina magic string module.\n");
-	     goto on_magic_string_fail;
-	  }
-
-	if (!eina_mempool_init())
-	  {
-	     EINA_ERROR_PERR("ERROR: Could not initialize eina mempool module.\n");
-	     goto on_mempool_fail;
-	  }
-
-#ifdef EINA_DEFAULT_MEMPOOL
-       choice = "pass_through";
-#else
-       if (!(choice = getenv("EINA_MEMPOOL")))
-	 choice = "chained_mempool";
-#endif
-
-       _eina_list_mp = eina_mempool_add(choice, "list", NULL,
-					sizeof (Eina_List), 320);
-       if (!_eina_list_mp)
-         {
-           EINA_ERROR_PERR("ERROR: Mempool for list cannot be allocated in list init.\n");
-	   goto on_init_fail;
-         }
-       _eina_list_accounting_mp = eina_mempool_add(choice, "list_accounting", NULL,
-						   sizeof (Eina_List_Accounting), 80);
-       if (!_eina_list_accounting_mp)
-         {
-           EINA_ERROR_PERR("ERROR: Mempool for list accounting cannot be allocated in list init.\n");
-	   eina_mempool_del(_eina_list_mp);
-	   goto on_init_fail;
-         }
-
-       eina_magic_string_set(EINA_MAGIC_ITERATOR,
-			     "Eina Iterator");
-       eina_magic_string_set(EINA_MAGIC_ACCESSOR,
-			     "Eina Accessor");
-       eina_magic_string_set(EINA_MAGIC_LIST,
-			     "Eina List");
-       eina_magic_string_set(EINA_MAGIC_LIST_ITERATOR,
-			     "Eina List Iterator");
-       eina_magic_string_set(EINA_MAGIC_LIST_ACCESSOR,
-			     "Eina List Accessor");
-       eina_magic_string_set(EINA_MAGIC_LIST_ACCOUNTING,
-			     "Eina List Accounting");
+	EINA_LOG_ERR("Could not register log domain: eina_list");
+	return EINA_FALSE;
      }
 
-   return ++_eina_list_init_count;
+#ifdef EINA_DEFAULT_MEMPOOL
+   choice = "pass_through";
+#else
+   choice = "chained_mempool";
+#endif
+   tmp = getenv("EINA_MEMPOOL");
+   if (tmp && tmp[0])
+     choice = tmp;
+
+   _eina_list_mp = eina_mempool_add
+     (choice, "list", NULL, sizeof(Eina_List), 320);
+   if (!_eina_list_mp)
+     {
+	ERR("ERROR: Mempool for list cannot be allocated in list init.");
+	goto on_init_fail;
+     }
+   _eina_list_accounting_mp = eina_mempool_add
+     (choice, "list_accounting", NULL, sizeof(Eina_List_Accounting), 80);
+   if (!_eina_list_accounting_mp)
+     {
+	ERR("ERROR: Mempool for list accounting cannot be allocated in list init.");
+	eina_mempool_del(_eina_list_mp);
+	goto on_init_fail;
+     }
+
+#define EMS(n) eina_magic_string_static_set(n, n##_STR)
+   EMS(EINA_MAGIC_LIST);
+   EMS(EINA_MAGIC_LIST_ITERATOR);
+   EMS(EINA_MAGIC_LIST_ACCESSOR);
+   EMS(EINA_MAGIC_LIST_ACCOUNTING);
+#undef EMS
+
+   return EINA_TRUE;
 
  on_init_fail:
-   eina_mempool_shutdown();
- on_mempool_fail:
-   eina_magic_string_shutdown();
- on_magic_string_fail:
-   eina_error_shutdown();
-   return 0;
+   eina_log_domain_unregister(_eina_list_log_dom);
+   _eina_list_log_dom = -1;
+   return EINA_FALSE;
 }
 
 /**
+ * @internal
  * @brief Shut down the list module.
  *
- * @return 0 when the list module is completely shut down, 1 or
- * greater otherwise.
+ * @return #EINA_TRUE on success, #EINA_FALSE on failure.
  *
- * This function shuts down the mempool, magic and error modules set
- * up by eina_list_init(). It is also called by eina_shutdown(). It
- * returns 0 when it is called the same number of times than
- * eina_list_init().
+ * This function shuts down the list module set up by
+ * eina_list_init(). It is called by eina_shutdown().
+ *
+ * @see eina_shutdown()
  */
-EAPI int
+Eina_Bool
 eina_list_shutdown(void)
 {
-   --_eina_list_init_count;
+   eina_mempool_del(_eina_list_accounting_mp);
+   eina_mempool_del(_eina_list_mp);
 
-   if (!_eina_list_init_count)
-     {
-	eina_mempool_del(_eina_list_accounting_mp);
-	eina_mempool_del(_eina_list_mp);
-
-	eina_mempool_shutdown();
-	eina_magic_string_shutdown();
-	eina_error_shutdown();
-     }
-
-   return _eina_list_init_count;
+   eina_log_domain_unregister(_eina_list_log_dom);
+   _eina_list_log_dom = -1;
+   return EINA_TRUE;
 }
 
 /**
@@ -863,6 +845,41 @@ eina_list_prepend_relative_list(Eina_List *list, const void *data, Eina_List *re
 }
 
 /**
+ * @brief Insert a new node into a sorted list.
+ *
+ * @param list The given linked list, @b must be sorted.
+ * @param data The data to insert sorted.
+ * @return A list pointer.
+ *
+ * This function inserts values into a linked list assuming it was
+ * sorted and the result will be sorted. If @p list is @c NULLL, a new
+ * list is returned. On success, a new list pointer that should be
+ * used in place of the one given to this function is
+ * returned. Otherwise, the old pointer is returned. See eina_error_get().
+ *
+ * @note O(log2(n)) comparisons (calls to func) average/worst case
+ * performance as it uses eina_list_search_sorted_near_list() and thus
+ * is bounded to that. As said in eina_list_search_sorted_near_list(),
+ * lists do not have O(1) access time, so walking to the correct node
+ * can be costly, consider worst case to be almost O(n) pointer
+ * dereference (list walk).
+ */
+EAPI Eina_List *
+eina_list_sorted_insert(Eina_List *list, Eina_Compare_Cb func, const void *data)
+{
+   Eina_List *lnear;
+   int cmp;
+
+   if (!list) return eina_list_append(NULL, data);
+
+   lnear = eina_list_search_sorted_near_list(list, func, data, &cmp);
+   if (cmp < 0)
+     return eina_list_append_relative_list(list, data, lnear);
+   else
+     return eina_list_prepend_relative_list(list, data, lnear);
+}
+
+/**
  * @brief Remove the first instance of the specified data from the given list.
  *
  * @param list The given list.
@@ -884,7 +901,7 @@ eina_list_remove(Eina_List *list, const void *data)
    if (list) EINA_MAGIC_CHECK_LIST(list, NULL);
 
    l = eina_list_data_find_list(list, data);
-             return eina_list_remove_list(list, l);
+   return eina_list_remove_list(list, l);
 }
 
 /**
@@ -900,7 +917,9 @@ eina_list_remove(Eina_List *list, const void *data)
  * @c NULL, it returns @p list, otherwise, a new list pointer that
  * should be used in place of the one passed to this function.
  *
- * The following code gives an example.
+ * The following code gives an example (notice we use EINA_LIST_FOREACH
+ * instead of EINA_LIST_FOREACH_SAFE because we stop the loop after
+ * removing the current node).
  *
  * @code
  * extern Eina_List *list;
@@ -1405,12 +1424,17 @@ eina_list_clone(const Eina_List *list)
  *
  * This function sorts @p list. @p size if the number of the first
  * element to sort. If @p size is 0 or greater than the number of
- * elements in @p list, all the elemnts are sorted. @p func is used to
+ * elements in @p list, all the elements are sorted. @p func is used to
  * compare two elements of @p list. If @p list or @p func are @c NULL,
  * this function returns @c NULL.
  *
  * @note @b in-place: this will change the given list, so you should
  * now point to the new list head that is returned by this function.
+ *
+ * @note worst case is O(n * log2(n)) comparisons (calls to func()),
+ * O(n) comparisons average case. That means that for 1,000,000 list
+ * elements, sort will usually do 1,000,000 comparisons, but may do up
+ * to 20,000,000.
  *
  * Example:
  * @code
@@ -1508,28 +1532,111 @@ eina_list_sort(Eina_List *list, unsigned int size, Eina_Compare_Cb func)
  *
  * Both left and right does not exist anymore after the merge.
  *
+ * @note merge cost is O(n), being @b n the size of the smallest
+ * list. This is due the need to fix accounting of that segment,
+ * making count and last access O(1).
  */
 EAPI Eina_List *
 eina_list_merge(Eina_List *left, Eina_List *right)
 {
+   unsigned int n_left, n_right;
+
    if (!left) return right;
    if (!right) return left;
 
    left->accounting->last->next = right;
    right->prev = left->accounting->last;
 
-   left->accounting->last = right->accounting->last;
-   left->accounting->count += right->accounting->count;
+   n_left = left->accounting->count;
+   n_right = right->accounting->count;
 
-   _eina_list_mempool_accounting_free(right->accounting);
-
-   while (right)
+   if (n_left >= n_right)
      {
-	right->accounting = left->accounting;
-	right = right->next;
+	Eina_List *itr = right;
+	left->accounting->last = right->accounting->last;
+	left->accounting->count += n_right;
+
+	_eina_list_mempool_accounting_free(right->accounting);
+
+	do
+	  {
+	     itr->accounting = left->accounting;
+	     itr = itr->next;
+	  }
+	while (itr);
+     }
+   else
+     {
+	Eina_List *itr = left->accounting->last;
+	right->accounting->count += n_left;
+
+	_eina_list_mempool_accounting_free(left->accounting);
+
+	do
+	  {
+	     itr->accounting = right->accounting;
+	     itr = itr->prev;
+	  }
+	while (itr);
      }
 
    return left;
+}
+
+
+/**
+ * @brief Split a list into 2 lists.
+ *
+ * @param list List to split.
+ * @param relative The list will be split after @p relative.
+ * @param right The head of the new right list.
+ * @return The new left list
+ *
+ * This function split @p list into two lists ( left and right ) after the node @p relative. @p Relative
+ * will become the last node of the left list. If @p list or @p right are NULL list is returns.
+ * If @p relative is NULL right is set to @p list and NULL is returns.
+ * If @p relative is the last node of @p list list is returns and @p right is set to NULL.
+ *
+ * list does not exist anymore after the split.
+ *
+ */
+   EAPI Eina_List *
+eina_list_split_list(Eina_List *list, Eina_List *relative, Eina_List **right)
+{
+   Eina_List *next;
+   Eina_List *itr;
+
+   if(!right) return list;
+   *right = NULL;
+
+   if (!list) return NULL;
+   if (!relative)
+     {
+	*right = list;
+	return NULL;
+     }
+   if (relative == eina_list_last(list)) return list;
+
+   next = eina_list_next(relative);
+   next->prev = NULL;
+   next->accounting = _eina_list_mempool_accounting_new(next);
+   next->accounting->last = list->accounting->last;
+   *right = next;
+
+   itr = next;
+   do
+     {
+	itr->accounting = next->accounting;
+	next->accounting->count++;
+	itr = itr->next;
+     }
+   while (itr);
+
+   relative->next = NULL;
+   list->accounting->last = relative;
+   list->accounting->count = list->accounting->count - next->accounting->count;
+
+   return list;
 }
 
 /**
@@ -1641,66 +1748,214 @@ eina_list_sorted_merge(Eina_List *left, Eina_List *right, Eina_Compare_Cb func)
    return ret;
 }
 
+/**
+ * @brief Returns node nearest to data is in the sorted list.
+ *
+ * @param list The list to search for data, @b must be sorted.
+ * @param func A function pointer that can handle comparing the list data nodes.
+ * @param data reference value to search.
+ * @param result_cmp if provided returns the result of
+ * func(node->data, data) node being the last (returned) node. If node
+ * was found (exact match), then it is 0. If returned node is smaller
+ * than requested data, it is less than 0 and if it's bigger it's
+ * greater than 0. It is the last value returned by func().
+ * @return the nearest node, NULL if not found.
+ *
+ * This can be used to check if some value is inside the list and get
+ * the nearest container node in this case. It should be used when list is
+ * known to be sorted as it will do binary search for results.
+ *
+ * Example: imagine user gives a string, you check if it's in the list
+ * before duplicating its contents, otherwise you want to insert it
+ * sorted. In this case you get the result of this function and either
+ * append or prepend the value.
+ *
+ * @note O(log2(n)) average/worst case performance, for 1,000,000
+ * elements it will do a maximum of 20 comparisons. This is much
+ * faster than the 1,000,000 comparisons made naively walking the list
+ * from head to tail, so depending on the number of searches and
+ * insertions, it may be worth to eina_list_sort() the list and do he
+ * searches later. As lists do not have O(1) access time, walking to
+ * the correct node can be costly, consider worst case to be almost
+ * O(n) pointer dereference (list walk).
+ *
+ * @see eina_list_search_sorted_list()
+ * @see eina_list_sort()
+ * @see eina_list_sorted_merge()
+ */
 EAPI Eina_List *
-eina_list_search_sorted_near_list(const Eina_List *list, Eina_Compare_Cb func, const void *data)
+eina_list_search_sorted_near_list(const Eina_List *list, Eina_Compare_Cb func, const void *data, int *result_cmp)
 {
    const Eina_List *ct;
-   void *d;
-   unsigned int inf, sup, cur, tmp;
-   int part;
+   unsigned int inf, sup, cur;
+   int cmp;
 
-   if (!list) return NULL;
-
-   inf = 0;
-   sup = eina_list_count(list) ;
-   cur = sup >> 1;
-   ct = eina_list_nth_list(list, cur);
-   d = eina_list_data_get(ct);
-
-   while ((part = func(d, data)))
+   if (!list)
      {
-       if (inf == sup
-	   || (part < 0 && inf == cur)
-	   || (part > 0 && sup == cur))
-	 return (Eina_List*) ct;
-       if (part < 0)
-          inf = (sup + inf) >> 1;
-       else
-          sup = (sup + inf) >> 1;
-       /* Faster to move directly from where we are to the new position than using eina_list_nth_list. */
-       tmp = (sup + inf) >> 1;
-       if (tmp < cur)
-	 for (; cur != tmp; cur--, ct = eina_list_prev(ct))
-	   ;
-       else
-	 for (; cur != tmp; cur++, ct = eina_list_next(ct))
-	   ;
-       d = eina_list_data_get(ct);
+	if (result_cmp) *result_cmp = 0;
+	return NULL;
      }
 
-   return (Eina_List*) ct;
+   if (list->accounting->count == 1)
+     {
+	if (result_cmp) *result_cmp = func(list->data, data);
+	return (Eina_List *)list;
+     }
+
+   /* list walk is expensive, do quick check: tail */
+   ct = list->accounting->last;
+   cmp = func(ct->data, data);
+   if (cmp <= 0)
+     goto end;
+
+   /* list walk is expensive, do quick check: head */
+   ct = list;
+   cmp = func(ct->data, data);
+   if (cmp >= 0)
+     goto end;
+
+   /* inclusive bounds */
+   inf = 1;
+   sup = list->accounting->count - 2;
+   cur = 1;
+   ct = list->next;
+
+   /* no loop, just compare if comparison value is important to caller */
+   if (inf > sup)
+     {
+	if (result_cmp) cmp = func(ct->data, data);
+	goto end;
+     }
+
+   while (inf <= sup)
+     {
+	unsigned int tmp = cur;
+	cur = inf + ((sup - inf) >> 1);
+	if      (tmp < cur) for (; tmp != cur; tmp++, ct = ct->next);
+	else if (tmp > cur) for (; tmp != cur; tmp--, ct = ct->prev);
+
+	cmp = func(ct->data, data);
+	if (cmp == 0)
+	  break;
+	else if (cmp < 0)
+	  inf = cur + 1;
+	else if (cmp > 0)
+	  {
+	     if (cur > 0)
+	       sup = cur - 1;
+	     else break;
+	  }
+	else break;
+     }
+
+ end:
+   if (result_cmp) *result_cmp = cmp;
+   return (Eina_List *)ct;
 }
 
+/**
+ * @brief Returns node if data is in the sorted list.
+ *
+ * @param list The list to search for data, @b must be sorted.
+ * @param func A function pointer that can handle comparing the list data nodes.
+ * @param data reference value to search.
+ * @return the node if func(node->data, data) == 0, NULL if not found.
+ *
+ * This can be used to check if some value is inside the list and get
+ * the container node in this case. It should be used when list is
+ * known to be sorted as it will do binary search for results.
+ *
+ * Example: imagine user gives a string, you check if it's in the list
+ * before duplicating its contents.
+ *
+ * @note O(log2(n)) average/worst case performance, for 1,000,000
+ * elements it will do a maximum of 20 comparisons. This is much
+ * faster than the 1,000,000 comparisons made by
+ * eina_list_search_unsorted_list(), so depending on the number of
+ * searches and insertions, it may be worth to eina_list_sort() the
+ * list and do he searches later. As said in
+ * eina_list_search_sorted_near_list(), lists do not have O(1) access
+ * time, so walking to the correct node can be costly, consider worst
+ * case to be almost O(n) pointer dereference (list walk).
+ *
+ * @see eina_list_search_sorted()
+ * @see eina_list_sort()
+ * @see eina_list_sorted_merge()
+ * @see eina_list_search_unsorted_list()
+ * @see eina_list_search_sorted_near_list()
+ */
 EAPI Eina_List *
 eina_list_search_sorted_list(const Eina_List *list, Eina_Compare_Cb func, const void *data)
 {
    Eina_List *lnear;
-   void      *d;
+   int cmp;
 
-   lnear = eina_list_search_sorted_near_list(list, func, data);
+   lnear = eina_list_search_sorted_near_list(list, func, data, &cmp);
    if (!lnear) return NULL;
-   d = eina_list_data_get(lnear);
-   if (!func(d, data))
+   if (cmp == 0)
      return lnear;
    return NULL;
 }
 
+
+/**
+ * @brief Returns node data if it is in the sorted list.
+ *
+ * @param list The list to search for data, @b must be sorted.
+ * @param func A function pointer that can handle comparing the list data nodes.
+ * @param data reference value to search.
+ * @return the node value (@c node->data) if func(node->data, data) == 0,
+ * NULL if not found.
+ *
+ * This can be used to check if some value is inside the list and get
+ * the existing instance in this case. It should be used when list is
+ * known to be sorted as it will do binary search for results.
+ *
+ * Example: imagine user gives a string, you check if it's in the list
+ * before duplicating its contents.
+ *
+ * @note O(log2(n)) average/worst case performance, for 1,000,000
+ * elements it will do a maximum of 20 comparisons. This is much
+ * faster than the 1,000,000 comparisons made by
+ * eina_list_search_unsorted(), so depending on the number of
+ * searches and insertions, it may be worth to eina_list_sort() the
+ * list and do he searches later. As said in
+ * eina_list_search_sorted_near_list(), lists do not have O(1) access
+ * time, so walking to the correct node can be costly, consider worst
+ * case to be almost O(n) pointer dereference (list walk).
+ *
+ * @see eina_list_search_sorted_list()
+ * @see eina_list_sort()
+ * @see eina_list_sorted_merge()
+ * @see eina_list_search_unsorted_list()
+ */
 EAPI void *
 eina_list_search_sorted(const Eina_List *list, Eina_Compare_Cb func, const void *data)
 {
    return eina_list_data_get(eina_list_search_sorted_list(list, func, data));
 }
 
+/**
+ * @brief Returns node if data is in the unsorted list.
+ *
+ * @param list The list to search for data, may be unsorted.
+ * @param func A function pointer that can handle comparing the list data nodes.
+ * @param data reference value to search.
+ * @return the node if func(node->data, data) == 0, NULL if not found.
+ *
+ * This can be used to check if some value is inside the list and get
+ * the container node in this case.
+ *
+ * Example: imagine user gives a string, you check if it's in the list
+ * before duplicating its contents.
+ *
+ * @note this is expensive and may walk the whole list, it's order-N,
+ * that is for 1,000,000 elements list it may walk and compare
+ * 1,000,000 nodes.
+ *
+ * @see eina_list_search_sorted_list()
+ * @see eina_list_search_unsorted()
+ */
 EAPI Eina_List *
 eina_list_search_unsorted_list(const Eina_List *list, Eina_Compare_Cb func, const void *data)
 {
@@ -1715,6 +1970,28 @@ eina_list_search_unsorted_list(const Eina_List *list, Eina_Compare_Cb func, cons
    return NULL;
 }
 
+/**
+ * @brief Returns node data if it is in the unsorted list.
+ *
+ * @param list The list to search for data, may be unsorted.
+ * @param func A function pointer that can handle comparing the list data nodes.
+ * @param data reference value to search.
+ * @return the node value (@c node->data) if func(node->data, data) == 0,
+ * NULL if not found.
+ *
+ * This can be used to check if some value is inside the list and get
+ * the existing instance in this case.
+ *
+ * Example: imagine user gives a string, you check if it's in the list
+ * before duplicating its contents.
+ *
+ * @note this is expensive and may walk the whole list, it's order-N,
+ * that is for 1,000,000 elements list it may walk and compare
+ * 1,000,000 nodes.
+ *
+ * @see eina_list_search_sorted()
+ * @see eina_list_search_unsorted_list()
+ */
 EAPI void *
 eina_list_search_unsorted(const Eina_List *list, Eina_Compare_Cb func, const void *data)
 {

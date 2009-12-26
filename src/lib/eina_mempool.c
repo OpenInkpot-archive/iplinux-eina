@@ -17,7 +17,7 @@
  */
 
 #ifdef HAVE_CONFIG_H
-# include <config.h>
+# include "config.h"
 #endif
 
 #include <assert.h>
@@ -25,11 +25,16 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "eina_mempool.h"
+#include "eina_config.h"
+#include "eina_private.h"
 #include "eina_hash.h"
 #include "eina_module.h"
-#include "eina_private.h"
+#include "eina_log.h"
+#include "eina_main.h"
+
+/* undefs EINA_ARG_NONULL() so NULL checks are not compiled out! */
 #include "eina_safety_checks.h"
+#include "eina_mempool.h"
 
 /*============================================================================*
  *                                  Local                                     *
@@ -41,7 +46,18 @@
 
 static Eina_Hash *_backends;
 static Eina_Array *_modules;
-static int _init_count = 0;
+static int _eina_mempool_log_dom = -1;
+
+#ifdef ERR
+#undef ERR
+#endif
+#define ERR(...) EINA_LOG_DOM_ERR(_eina_mempool_log_dom, __VA_ARGS__)
+
+#ifdef DBG
+#undef DBG
+#endif
+#define DBG(...) EINA_LOG_DOM_DBG(_eina_mempool_log_dom, __VA_ARGS__)
+
 
 static Eina_Mempool *
 _new_from_buffer(const char *name, const char *context, const char *options, va_list args)
@@ -105,14 +121,20 @@ void fixed_bitmap_shutdown(void);
  *                                 Global                                     *
  *============================================================================*/
 
-EAPI Eina_Bool eina_mempool_register(Eina_Mempool_Backend *be)
+EAPI Eina_Bool
+eina_mempool_register(Eina_Mempool_Backend *be)
 {
-	return eina_hash_add(_backends, be->name, be);
+   EINA_SAFETY_ON_NULL_RETURN_VAL(be, 0);
+   DBG("be=%p, name=%p", be, be->name);
+   return eina_hash_add(_backends, be->name, be);
 }
 
-EAPI void eina_mempool_unregister(Eina_Mempool_Backend *be)
+EAPI void
+eina_mempool_unregister(Eina_Mempool_Backend *be)
 {
-	eina_hash_del(_backends, be->name, be);
+   EINA_SAFETY_ON_NULL_RETURN(be);
+   DBG("be=%p, name=%p", be, be->name);
+   eina_hash_del(_backends, be->name, be);
 }
 
 /*============================================================================*
@@ -129,105 +151,102 @@ EAPI void eina_mempool_unregister(Eina_Mempool_Backend *be)
 
 EAPI Eina_Error EINA_ERROR_NOT_MEMPOOL_MODULE = 0;
 
-EAPI int
+static const char EINA_ERROR_NOT_MEMPOOL_MODULE_STR[] = "Not a memory pool module.";
+
+Eina_Bool
 eina_mempool_init(void)
 {
-	if (!_init_count)
-	{
-		char *path;
+   char *path;
 
-		if (!eina_hash_init())
-		  {
-		     fprintf(stderr, "Could not initialize eina hash module.\n");
-		     return 0;
-		  }
-		if (!eina_module_init())
-		  {
-		     fprintf(stderr, "Could not initialize eina module module.\n");
-		     goto module_init_error;
-		  }
+   _eina_mempool_log_dom = eina_log_domain_register("eina_mempool", EINA_LOG_COLOR_DEFAULT);
+   if (_eina_mempool_log_dom < 0)
+     {
+	EINA_LOG_ERR("Could not register log domain: eina_mempool");
+	return 0;
+     }
 
-		EINA_ERROR_NOT_MEMPOOL_MODULE = eina_error_msg_register("Not a memory pool module.");
-		_backends = eina_hash_string_superfast_new(NULL);
+   EINA_ERROR_NOT_MEMPOOL_MODULE = eina_error_msg_static_register(EINA_ERROR_NOT_MEMPOOL_MODULE_STR);
+   _backends = eina_hash_string_superfast_new(NULL);
 
-		/* dynamic backends */
-		_modules = eina_module_list_get(NULL, PACKAGE_LIB_DIR "/eina/mp/", 0, NULL, NULL);
+   /* dynamic backends */
+   _modules = eina_module_list_get(NULL, PACKAGE_LIB_DIR "/eina/mp/", 0, NULL, NULL);
 
-		path = eina_module_environment_path_get("HOME", "/.eina/mp/");
-		_modules = eina_module_list_get(_modules, path, 0, NULL, NULL);
-		if (path) free(path);
+   path = eina_module_environment_path_get("HOME", "/.eina/mp/");
+   _modules = eina_module_list_get(_modules, path, 0, NULL, NULL);
+   if (path) free(path);
 
-		path = eina_module_environment_path_get("EINA_MODULES_MEMPOOL_DIR", "/eina/mp/");
-		_modules = eina_module_list_get(_modules, path, 0, NULL, NULL);
-		if (path) free(path);
+   path = eina_module_environment_path_get("EINA_MODULES_MEMPOOL_DIR", "/eina/mp/");
+   _modules = eina_module_list_get(_modules, path, 0, NULL, NULL);
+   if (path) free(path);
 
-		path = eina_module_symbol_path_get(eina_mempool_init, "/eina/mp/");
-		_modules = eina_module_list_get(_modules, path, 0, NULL, NULL);
-		if (path) free(path);
+   path = eina_module_symbol_path_get(eina_init, "/eina/mp/");
+   _modules = eina_module_list_get(_modules, path, 0, NULL, NULL);
+   if (path) free(path);
 
-		if (!_modules)
-		{
-			EINA_ERROR_PERR("ERROR: no mempool modules able to be loaded.\n");
-			eina_hash_free(_backends);
-			goto mempool_init_error;
-		}
-		eina_module_list_load(_modules);
-		/* builtin backends */
+   if (!_modules)
+     {
+	ERR("no mempool modules able to be loaded.");
+	eina_hash_free(_backends);
+	goto mempool_init_error;
+     }
+   eina_module_list_load(_modules);
+   /* builtin backends */
 #ifdef EINA_STATIC_BUILD_CHAINED_POOL
-		chained_init();
+   chained_init();
 #endif
 #ifdef EINA_STATIC_BUILD_PASS_THROUGH
-		pass_through_init();
+   pass_through_init();
 #endif
 #ifdef EINA_STATIC_BUILD_EMEMOA_UNKNOWN
-		ememoa_unknown_init();
+   ememoa_unknown_init();
 #endif
 #ifdef EINA_STATIC_BUILD_EMEMOA_FIXED
-		ememoa_fixed_init();
+   ememoa_fixed_init();
 #endif
-	}
-	return ++_init_count;
+#ifdef EINA_STATIC_BUILD_FIXED_BITMAP
+   fixed_bitmap_init();
+#endif
 
-	mempool_init_error:
-	   eina_module_shutdown();
-	module_init_error:
-	   eina_hash_shutdown();
+   return EINA_TRUE;
 
-	return 0;
+ mempool_init_error:
+   eina_log_domain_unregister(_eina_mempool_log_dom);
+   _eina_mempool_log_dom = -1;
 
+   return EINA_FALSE;
 }
 
-EAPI int
+Eina_Bool
 eina_mempool_shutdown(void)
 {
-	_init_count--;
-	if (_init_count != 0) return _init_count;
-
-	/* builtin backends */
+   /* builtin backends */
 #ifdef EINA_STATIC_BUILD_CHAINED_POOL
-	chained_shutdown();
+   chained_shutdown();
 #endif
 #ifdef EINA_STATIC_BUILD_PASS_THROUGH
-	pass_through_shutdown();
+   pass_through_shutdown();
 #endif
 #ifdef EINA_STATIC_BUILD_EMEMOA_UNKNOWN
-	ememoa_unknown_shutdown();
+   ememoa_unknown_shutdown();
 #endif
 #ifdef EINA_STATIC_BUILD_EMEMOA_FIXED
-	ememoa_fixed_shutdown();
+   ememoa_fixed_shutdown();
 #endif
-	/* dynamic backends */
-	eina_module_list_flush(_modules);
-	if (_modules)
-	   eina_array_free(_modules);
+#ifdef EINA_STATIC_BUILD_FIXED_BITMAP
+   fixed_bitmap_shutdown();
+#endif
+   /* dynamic backends */
+   eina_module_list_flush(_modules);
+   if (_modules)
+     eina_array_free(_modules);
 
-	eina_module_shutdown();
+   if (_backends)
+     eina_hash_free(_backends);
 
-	if (_backends)
-	   eina_hash_free(_backends);
+   eina_log_domain_unregister(_eina_mempool_log_dom);
+   _eina_mempool_log_dom = -1;
 
-	eina_hash_shutdown();
-	return 0;
+   return EINA_TRUE;
 }
 
 EAPI Eina_Mempool *
@@ -237,10 +256,15 @@ eina_mempool_add(const char *name, const char *context, const char *options, ...
 	va_list args;
 
 	EINA_SAFETY_ON_NULL_RETURN_VAL(name, NULL);
+	DBG("name=%s, context=%s, options=%s",
+	    name, context ? context : "", options ? options : "");
 
 	va_start(args, options);
 	mp = _new_from_buffer(name, context, options, args);
 	va_end(args);
+
+	DBG("name=%s, context=%s, options=%s, mp=%p",
+	    name, context ? context : "", options ? options : "", mp);
 
 	return mp;
 }
@@ -249,6 +273,7 @@ EAPI void eina_mempool_del(Eina_Mempool *mp)
 {
         EINA_SAFETY_ON_NULL_RETURN(mp);
 	EINA_SAFETY_ON_NULL_RETURN(mp->backend.shutdown);
+	DBG("mp=%p", mp);
 	mp->backend.shutdown(mp->backend_data);
 	free(mp);
 }
@@ -257,6 +282,7 @@ EAPI void eina_mempool_gc(Eina_Mempool *mp)
 {
         EINA_SAFETY_ON_NULL_RETURN(mp);
         EINA_SAFETY_ON_NULL_RETURN(mp->backend.garbage_collect);
+	DBG("mp=%p", mp);
 	mp->backend.garbage_collect(mp->backend_data);
 }
 
@@ -264,6 +290,7 @@ EAPI void eina_mempool_statistics(Eina_Mempool *mp)
 {
         EINA_SAFETY_ON_NULL_RETURN(mp);
         EINA_SAFETY_ON_NULL_RETURN(mp->backend.statistics);
+	DBG("mp=%p", mp);
 	mp->backend.statistics(mp->backend_data);
 }
 

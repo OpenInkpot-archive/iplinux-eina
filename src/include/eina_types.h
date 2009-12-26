@@ -86,6 +86,9 @@
 #ifdef EINA_CONST
 # undef EINA_CONST
 #endif
+#ifdef EINA_NOINSTRUMENT
+# undef EINA_NOINSTRUMENT
+#endif
 #ifdef EINA_UNLIKELY
 # undef EINA_UNLIKELY
 #endif
@@ -126,6 +129,7 @@
 #  define EINA_SCANF(fmt, arg)  __attribute__((format (scanf, fmt, arg)))
 #  define EINA_FORMAT(fmt) __attribute__((format_arg(fmt)))
 #  define EINA_CONST __attribute__((const))
+#  define EINA_NOINSTRUMENT __attribute__((no_instrument_function))
 #  define EINA_UNLIKELY(exp) __builtin_expect((exp), 0)
 #  define EINA_LIKELY(exp) __builtin_expect((exp), 1)
 # else
@@ -133,6 +137,7 @@
 #  define EINA_SCANF(fmt, arg)
 #  define EINA_FORMAT(fmt)
 #  define EINA_CONST
+#  define EINA_NOINSTRUMENT
 #  define EINA_UNLIKELY(exp) exp
 #  define EINA_LIKELY(exp) exp
 # endif
@@ -151,10 +156,34 @@
 # define EINA_SCANF(fmt, arg)
 # define EINA_FORMAT(fmt)
 # define EINA_CONST
+# define EINA_NOINSTRUMENT
 # define EINA_UNLIKELY(exp) exp
 # define EINA_LIKELY(exp) exp
 
-#else /* ! __GNUC__ && ! _WIN32 */
+#elif defined(__SUNPRO_C)
+# define EINA_WARN_UNUSED_RESULT
+# define EINA_ARG_NONNULL(...)
+# define EINA_DEPRECATED
+# if __SUNPRO_C >= 0x590
+#  define EINA_MALLOC __attribute__ ((malloc))
+#  define EINA_PURE __attribute__ ((pure))
+# else
+#  define EINA_MALLOC
+#  define EINA_PURE
+# endif
+# define EINA_PRINTF(fmt, arg)
+# define EINA_SCANF(fmt, arg)
+# define EINA_FORMAT(fmt)
+# if __SUNPRO_C >= 0x590
+#  define EINA_CONST __attribute__ ((const))
+# else
+#  define EINA_CONST
+# endif
+# define EINA_NOINSTRUMENT
+# define EINA_UNLIKELY(exp) exp
+# define EINA_LIKELY(exp) exp
+
+#else /* ! __GNUC__ && ! _WIN32 && ! __SUNPRO_C */
 # define EINA_WARN_UNUSED_RESULT
 # define EINA_ARG_NONNULL(idx, ...)
 # define EINA_DEPRECATED
@@ -164,9 +193,10 @@
 # define EINA_SCANF(fmt, arg)
 # define EINA_FORMAT(fmt)
 # define EINA_CONST
+# define EINA_NOINSTRUMENT
 # define EINA_UNLIKELY(exp) exp
 # define EINA_LIKELY(exp) exp
-#endif /* ! __GNUC__ && ! _WIN32 */
+#endif /* ! __GNUC__ && ! _WIN32 && ! __SUNPRO_C */
 
 
 /* remove this TRUE/FALSE redifinitions */

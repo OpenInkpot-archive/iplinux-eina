@@ -21,25 +21,14 @@
 #endif
 
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 
 #define EINA_MAGIC_DEBUG
 
 #include "eina_suite.h"
-#include "eina_magic.h"
-
-START_TEST(eina_magic_string_init_shutdown)
-{
-   eina_magic_string_init();
-    eina_magic_string_init();
-    eina_magic_string_shutdown();
-    eina_magic_string_init();
-     eina_magic_string_init();
-     eina_magic_string_shutdown();
-    eina_magic_string_shutdown();
-   eina_magic_string_shutdown();
-}
-END_TEST
+#include "Eina.h"
+#include "eina_safety_checks.h"
 
 #define EINA_MAGIC_TEST 0x7781fee7
 #define EINA_MAGIC_TEST2 0x42241664
@@ -55,17 +44,28 @@ START_TEST(eina_magic_simple)
 {
    Eina_Magic_Struct *ems = NULL;
 
-   eina_magic_string_init();
+   eina_init();
 
    eina_magic_string_set(EINA_MAGIC_TEST, EINA_MAGIC_STRING);
+
+#ifdef EINA_SAFETY_CHECKS
+   fprintf(stderr, "you should have a safety check failure below:\n");
    eina_magic_string_set(EINA_MAGIC_TEST2, NULL);
+   fail_if(eina_error_get() != EINA_ERROR_SAFETY_FAILED);
+
+   fprintf(stderr, "you should have a safety check failure below:\n");
    eina_magic_string_set(EINA_MAGIC_TEST2, NULL);
+   fail_if(eina_error_get() != EINA_ERROR_SAFETY_FAILED);
+#endif
+
    eina_magic_string_set(EINA_MAGIC_TEST2, EINA_MAGIC_STRING);
 
    fail_if(eina_magic_string_get(EINA_MAGIC_TEST) == NULL);
    fail_if(strcmp(eina_magic_string_get(EINA_MAGIC_TEST), EINA_MAGIC_STRING) != 0);
 
+#ifdef EINA_MAGIC_DEBUG
    fail_if(EINA_MAGIC_CHECK(ems, EINA_MAGIC_TEST));
+   fprintf(stderr, "you should see 'Input handle pointer is NULL' below\n");
    EINA_MAGIC_FAIL(ems, EINA_MAGIC_TEST);
 
    ems = malloc(sizeof (Eina_Magic_Struct));
@@ -75,18 +75,20 @@ START_TEST(eina_magic_simple)
    fail_if(!EINA_MAGIC_CHECK(ems, EINA_MAGIC_TEST));
 
    EINA_MAGIC_SET(ems, EINA_MAGIC_NONE);
+   fprintf(stderr, "you should see 'Input handle has already been freed' below\n");
    EINA_MAGIC_FAIL(ems, EINA_MAGIC_TEST);
 
    EINA_MAGIC_SET(ems, 42424242);
+   fprintf(stderr, "you should see 'Input handle is wrong type' below\n");
    EINA_MAGIC_FAIL(ems, EINA_MAGIC_TEST);
+#endif
 
-   eina_magic_string_shutdown();
+   eina_shutdown();
 }
 END_TEST
 
 void eina_test_magic(TCase *tc)
 {
-   tcase_add_test(tc, eina_magic_string_init_shutdown);
    tcase_add_test(tc, eina_magic_simple);
 }
 

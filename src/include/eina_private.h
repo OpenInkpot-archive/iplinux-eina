@@ -21,8 +21,6 @@
 
 #include <stdarg.h>
 
-#include "eina_config.h"
-
 #if HAVE___ATTRIBUTE__
 # define __UNUSED__ __attribute__((unused))
 #else
@@ -51,6 +49,8 @@
 
 #define READBUFSIZ 65536
 
+#define EINA_LOG_COLOR_DEFAULT "\033[36m"
+
 /* eina magic types */
 #define EINA_MAGIC_STRINGSHARE 0x98761234
 #define EINA_MAGIC_STRINGSHARE_NODE 0x98761235
@@ -70,6 +70,17 @@
 
 #define EINA_MAGIC_TILER 0x98761240
 #define EINA_MAGIC_TILER_ITERATOR 0x98761241
+
+#define EINA_MAGIC_MATRIXSPARSE 0x98761242
+#define EINA_MAGIC_MATRIXSPARSE_ROW 0x98761243
+#define EINA_MAGIC_MATRIXSPARSE_CELL 0x98761244
+#define EINA_MAGIC_MATRIXSPARSE_ITERATOR 0x98761245
+#define EINA_MAGIC_MATRIXSPARSE_ROW_ITERATOR 0x98761246
+#define EINA_MAGIC_MATRIXSPARSE_ROW_ACCESSOR 0x98761247
+#define EINA_MAGIC_MATRIXSPARSE_CELL_ITERATOR 0x98761248
+#define EINA_MAGIC_MATRIXSPARSE_CELL_ACCESSOR 0x98761249
+
+
 
 /* undef the following, we want out version */
 #undef FREE
@@ -104,6 +115,13 @@
 	FREE(ptr);					\
      }							\
   } while(0);
+
+#ifdef EFL_HAVE_PTHREAD
+void eina_stringshare_threads_init(void);
+void eina_stringshare_threads_shutdown(void);
+void eina_log_threads_init(void);
+void eina_log_threads_shutdown(void);
+#endif
 
 #endif /* EINA_PRIVATE_H_ */
 

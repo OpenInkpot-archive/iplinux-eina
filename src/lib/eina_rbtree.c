@@ -24,10 +24,13 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "eina_rbtree.h"
-#include "eina_array.h"
+#include "eina_config.h"
 #include "eina_private.h"
+#include "eina_array.h"
+
+/* undefs EINA_ARG_NONULL() so NULL checks are not compiled out! */
 #include "eina_safety_checks.h"
+#include "eina_rbtree.h"
 
 /*============================================================================*
  *                                  Local                                     *
@@ -156,7 +159,7 @@ _eina_rbtree_iterator_next(Eina_Iterator_Rbtree *it, void **data)
    return _eina_rbtree_iterator_next(it, data);
 
  onfix:
-   if (data) *data = tree;
+   *data = tree;
    return EINA_TRUE;
 }
 
@@ -254,6 +257,11 @@ eina_rbtree_inline_insert(Eina_Rbtree *root, Eina_Rbtree *node, Eina_Rbtree_Cmp_
    Eina_Rbtree head;
    Eina_Rbtree *g, *t;  /* Grandparent & parent */
    Eina_Rbtree *p, *q;  /* Iterator & parent */
+   /* WARNING:
+      Compiler is not able to understand the underlying algorithm and don't know that
+      first top node is always black, so it will never use last before running the loop
+      one time.
+    */
    Eina_Rbtree_Direction dir, last;
 
    EINA_SAFETY_ON_NULL_RETURN_VAL(node, root);
@@ -270,7 +278,7 @@ eina_rbtree_inline_insert(Eina_Rbtree *root, Eina_Rbtree *node, Eina_Rbtree_Cmp_
      }
 
    memset(&head, 0, sizeof (Eina_Rbtree));
-   dir = EINA_RBTREE_LEFT;
+   last = dir = EINA_RBTREE_LEFT;
 
    /* Set up helpers */
    t = &head;

@@ -23,9 +23,20 @@
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 
-#include "eina_convert.h"
+#ifdef HAVE_EVIL
+# include <Evil.h>
+#endif
+
+#include "eina_config.h"
+#include "eina_private.h"
+#include "eina_log.h"
+
+/* undefs EINA_ARG_NONULL() so NULL checks are not compiled out! */
 #include "eina_safety_checks.h"
+#include "eina_convert.h"
+#include "eina_fp.h"
 
 /*============================================================================*
  *                                  Local                                     *
@@ -38,7 +49,17 @@
 static const char look_up_table[] = {'0', '1', '2', '3', '4',
 				     '5', '6', '7', '8', '9',
 				     'a', 'b', 'c', 'd', 'e', 'f'};
-static int _eina_convert_init_count = 0;
+static int _eina_convert_log_dom = -1;
+
+#ifdef ERR
+#undef ERR
+#endif
+#define ERR(...) EINA_LOG_DOM_ERR(_eina_convert_log_dom, __VA_ARGS__)
+
+#ifdef DBG
+#undef DBG
+#endif
+#define DBG(...) EINA_LOG_DOM_DBG(_eina_convert_log_dom, __VA_ARGS__)
 
 #define HEXA_TO_INT(Hexa) (Hexa >= 'a') ? Hexa - 'a' + 10 : Hexa - '0'
 
@@ -75,6 +96,10 @@ EAPI Eina_Error EINA_ERROR_CONVERT_P_NOT_FOUND = 0;
 EAPI Eina_Error EINA_ERROR_CONVERT_0X_NOT_FOUND = 0;
 EAPI Eina_Error EINA_ERROR_CONVERT_OUTRUN_STRING_LENGTH = 0;
 
+static const char EINA_ERROR_CONVERT_0X_NOT_FOUND_STR[] = "Error during string convertion to float, First '0x' was not found.";
+static const char EINA_ERROR_CONVERT_P_NOT_FOUND_STR[] = "Error during string convertion to float, First 'p' was not found.";
+static const char EINA_ERROR_CONVERT_OUTRUN_STRING_LENGTH_STR[] = "Error outrun string limit during convertion string convertion to float.";
+
 /**
  * @endcond
  */
@@ -85,8 +110,8 @@ EAPI Eina_Error EINA_ERROR_CONVERT_OUTRUN_STRING_LENGTH = 0;
  * These functions allow you to convert integer or real numbers to
  * string or conversely.
  *
- * To use these function, you have to call eina_convert_init()
- * first, and eina_convert_shutdown() when they are not used anymore.
+ * To use these functions, you have to call eina_init()
+ * first, and eina_shutdown() when eina is not used anymore.
  *
  * @section Eina_Convert_From_Integer_To_Sring Conversion from integer to string
  *
@@ -107,9 +132,9 @@ EAPI Eina_Error EINA_ERROR_CONVERT_OUTRUN_STRING_LENGTH = 0;
  * {
  *    char *tmp[128];
  *
- *    if (!eina_convert_init())
+ *    if (!eina_init())
  *    {
- *        printf ("Error during the initialization of eina_convert module\n");
+ *        printf ("Error during the initialization of eina.\n");
  *        return EXIT_FAILURE;
  *    }
  *
@@ -119,7 +144,7 @@ EAPI Eina_Error EINA_ERROR_CONVERT_OUTRUN_STRING_LENGTH = 0;
  *    eina_convert_xtoa(0xA1, tmp);
  *    printf("value: %s\n", tmp);
  *
- *    eina_convert_shutdown();
+ *    eina_shutdown();
  *
  *    return EXIT_SUCCESS;
  * }
@@ -173,9 +198,9 @@ EAPI Eina_Error EINA_ERROR_CONVERT_OUTRUN_STRING_LENGTH = 0;
  *    long int  e = 0;
  *    doule     r;
  *
- *    if (!eina_convert_init())
+ *    if (!eina_init())
  *    {
- *        printf ("Error during the initialization of eina_convert module\n");
+ *        printf ("Error during the initialization of eina.\n");
  *        return EXIT_FAILURE;
  *    }
  *
@@ -186,7 +211,7 @@ EAPI Eina_Error EINA_ERROR_CONVERT_OUTRUN_STRING_LENGTH = 0;
  *    r = ldexp((double)m, e);
  *    printf("value: %s\n", tmp);
  *
- *    eina_convert_shutdown();
+ *    eina_shutdown();
  *
  *    return EXIT_SUCCESS;
  * }
@@ -198,54 +223,57 @@ EAPI Eina_Error EINA_ERROR_CONVERT_OUTRUN_STRING_LENGTH = 0;
  */
 
 /**
- * @brief Initialize the eina convert internal structure.
+ * @internal
+ * @brief Initialize the convert module.
  *
- * @return 1 or greater on success, 0 on error.
+ * @return #EINA_TRUE on success, #EINA_FALSE on failure.
+ *
+ * This function sets up the convert module of Eina. It is called by
+ * eina_init().
  *
  * This function sets up the error module of Eina and registers the
  * errors #EINA_ERROR_CONVERT_0X_NOT_FOUND,
  * #EINA_ERROR_CONVERT_P_NOT_FOUND and
- * #EINA_ERROR_CONVERT_OUTRUN_STRING_LENGTH. It is also called by
- * eina_init(). It returns 0 on failure, otherwise it returns the
- * number of times it has already been called.
+ * #EINA_ERROR_CONVERT_OUTRUN_STRING_LENGTH.
+ *
+ * @see eina_init()
  */
-EAPI int
+Eina_Bool
 eina_convert_init(void)
 {
-   _eina_convert_init_count++;
+   _eina_convert_log_dom = eina_log_domain_register("eina_convert", EINA_LOG_COLOR_DEFAULT);
+   if (_eina_convert_log_dom < 0)
+     {
+	EINA_LOG_ERR("Could not register log domain: eina_convert");
+	return EINA_FALSE;
+     }
 
-   if (_eina_convert_init_count > 1) goto init_out;
+#define EEMR(n) n = eina_error_msg_static_register(n##_STR)
+   EEMR(EINA_ERROR_CONVERT_0X_NOT_FOUND);
+   EEMR(EINA_ERROR_CONVERT_P_NOT_FOUND);
+   EEMR(EINA_ERROR_CONVERT_OUTRUN_STRING_LENGTH);
+#undef EEMR
 
-   eina_error_init();
-   EINA_ERROR_CONVERT_0X_NOT_FOUND = eina_error_msg_register("Error during string convertion to float, First '0x' was not found.");
-   EINA_ERROR_CONVERT_P_NOT_FOUND = eina_error_msg_register("Error during string convertion to float, First 'p' was not found.");
-   EINA_ERROR_CONVERT_OUTRUN_STRING_LENGTH = eina_error_msg_register("Error outrun string limit during convertion string convertion to float.");
-
- init_out:
-   return _eina_convert_init_count;
+   return EINA_TRUE;
 }
 
 /**
- * @brief Shut down the eina convert internal structures
+ * @internal
+ * @brief Shut down the convert module.
  *
- * @return 0 when the convert module is completely shut down, 1 or
- * greater otherwise.
+ * @return #EINA_TRUE on success, #EINA_FALSE on failure.
  *
- * This function just shuts down the error module. It is also called by
- * eina_shutdown(). It returns 0 when it is called the same number of
- * times than eina_convert_init().
+ * This function shuts down the convert module set up by
+ * eina_convert_init(). It is called by eina_shutdown().
+ *
+ * @see eina_shutdown()
  */
-EAPI int
+Eina_Bool
 eina_convert_shutdown(void)
 {
-   _eina_convert_init_count--;
-
-   if (_eina_convert_init_count > 0) goto shutdown_out;
-
-   eina_error_shutdown();
-
- shutdown_out:
-   return _eina_convert_init_count;
+   eina_log_domain_unregister(_eina_convert_log_dom);
+   _eina_convert_log_dom = -1;
+   return EINA_TRUE;
 }
 
 /*
@@ -264,7 +292,7 @@ eina_convert_shutdown(void)
  * converted string is in decimal base. As no check is done, @p s must
  * be a buffer that is sufficiently large to store the integer.
  *
- * The returned value is the length os the string, including the nul
+ * The returned value is the length of the string, including the nul
  * terminated character.
  */
 EAPI int
@@ -306,7 +334,7 @@ eina_convert_itoa(int n, char *s)
  * cyphers are in lower case. As no check is done, @p s must be a
  * buffer that is sufficiently large to store the integer.
  *
- * The returned value is the length os the string, including the nul
+ * The returned value is the length of the string, including the nul
  * terminated character.
  */
 EAPI int
@@ -329,7 +357,7 @@ eina_convert_xtoa(unsigned int n, char *s)
 }
 
 /**
- * @brief Convert a string to a double
+ * @brief Convert a string to a double.
  *
  * @param src The string to convert.
  * @param length The length of the string.
@@ -398,7 +426,7 @@ eina_convert_atod(const char *src, int length, long long *m, long *e)
    if (strncmp(str, "0x", 2))
      {
 	eina_error_set(EINA_ERROR_CONVERT_0X_NOT_FOUND);
-	EINA_ERROR_PDBG("'0x' not found in '%s'\n", src);
+	DBG("'0x' not found in '%s'", src);
         return EINA_FALSE;
      }
 
@@ -426,7 +454,7 @@ eina_convert_atod(const char *src, int length, long long *m, long *e)
    if (*str != 'p')
      {
 	eina_error_set(EINA_ERROR_CONVERT_P_NOT_FOUND);
-	EINA_ERROR_PDBG("'p' not found in '%s'\n", src);
+	DBG("'p' not found in '%s'", src);
         return EINA_FALSE;
      }
    sign = +1;
@@ -463,7 +491,7 @@ eina_convert_atod(const char *src, int length, long long *m, long *e)
 }
 
 /**
- * @brief Convert a double to a string
+ * @brief Convert a double to a string.
  *
  * @param d The double to convert.
  * @param des The destination buffer to store the converted double.
@@ -471,7 +499,7 @@ eina_convert_atod(const char *src, int length, long long *m, long *e)
  *
  * This function converts the double @p d to a string. The string is
  * stored in the buffer pointed by @p des and must be sufficiently
- * large to contain the converted double. The returned string is
+ * large to contain the converted double. The returned string is nul
  * terminated and has the following format:
  *
  * @code
@@ -544,6 +572,184 @@ eina_convert_dtoa(double d, char *des)
    length += 2;
 
    return length + eina_convert_itoa(p, des);
+}
+
+/**
+ * @brief Convert a 32.32 fixed point number to a string.
+ *
+ * @param fp The fixed point number to convert.
+ * @param des The destination buffer to store the converted fixed point number.
+ * @return #EINA_TRUE on success, #EINA_FALSE otherwise.
+ *
+ * This function converts the 32.32 fixed point number @fp to a
+ * string. The string is stored in the buffer pointed by @p des and
+ * must be sufficiently large to contain the converted fixed point
+ * number. The returned string is terminated and has the following
+ * format:
+ *
+ * @code
+ * [-]0xh.hhhhhp[+-]e
+ * @endcode
+ *
+ * where the h are the hexadecimal cyphers of the mantiss and e the
+ * exponent (a decimal number).
+ *
+ * The returned value is the length of the string, including the nul
+ * character.
+ *
+ * @note The code is the same than eina_convert_dtoa() except that it
+ * implements the frexp() function for fixed point numbers and does
+ * some optimisations.
+ */
+EAPI int
+eina_convert_fptoa(Eina_F32p32 fp, char *des)
+{
+   int length = 0;
+   int p = 0;
+   int i;
+
+   EINA_SAFETY_ON_NULL_RETURN_VAL(des, EINA_FALSE);
+
+   if (fp == 0)
+     {
+       memcpy(des, "0x0p+0", 7);
+       return 7;
+     }
+
+   if (fp < 0)
+     {
+        *(des++) = '-';
+        fp = -fp;
+	length++;
+     }
+
+   /* fp >= 1 */
+   if (fp >= 0x0000000100000000LL)
+     {
+        while (fp >= 0x0000000100000000LL)
+          {
+            p++;
+            /* fp /= 2 */
+            fp >>= 1;
+          }
+     }
+   /* fp < 0.5 */
+   else if (fp < 0x80000000)
+     {
+        while (fp < 0x80000000)
+          {
+             p--;
+             /* fp *= 2 */
+             fp <<= 1;
+          }
+     }
+
+   if (p)
+     {
+        p--;
+	/* fp *= 2 */
+        fp <<= 1;
+     }
+
+   *(des++) = '0';
+   *(des++) = 'x';
+   *(des++) = look_up_table[fp >> 32];
+   *(des++) = '.';
+   length += 4;
+
+   for (i = 0; i < 16; i++, length++)
+     {
+        fp &= 0x00000000ffffffffLL;
+        fp <<= 4; /* fp *= 16 */
+        *(des++) = look_up_table[fp >> 32];
+     }
+
+   while (*(des - 1) == '0')
+     {
+	des--;
+	length--;
+     }
+
+   if (*(des - 1) == '.')
+     {
+	des--;
+	length--;
+     }
+
+   *(des++) = 'p';
+   if (p < 0)
+     {
+        *(des++) = '-';
+        p = -p;
+     }
+   else
+     *(des++) = '+';
+   length += 2;
+
+   return length + eina_convert_itoa(p, des);
+}
+
+/**
+ * @brief Convert a string to a 32.32 fixed point number.
+ *
+ * @param src The string to convert.
+ * @param length The length of the string.
+ * @param fp The fixed point number.
+ * @return #EINA_TRUE on success, #EINA_FALSE otherwise.
+ *
+ * This function converts the string @p src of length @p length that
+ * represent a double in hexadecimal base to a 32.32 fixed point
+ * number stored in @p fp. The function always tries to convert the
+ * string with eina_convert_atod().
+ *
+ * The string must have the following format:
+ *
+ * @code
+ * [-]0xh.hhhhhp[+-]e
+ * @endcode
+ *
+ * where the h are the hexadecimal cyphers of the mantiss and e the
+ * exponent (a decimal number). If n is the number of cypers after the
+ * point, the returned mantiss and exponents are:
+ *
+ * @code
+ * mantiss  : [-]hhhhhh
+ * exponent : 2^([+-]e - 4 * n)
+ * @endcode
+ *
+ * The mantiss and exponent are stored in the buffers pointed
+ * respectively by @p m and @p e.
+ *
+ * If the string is invalid, the error is set to:
+ *
+ * @li #EINA_ERROR_CONVERT_0X_NOT_FOUND if no 0x is found,
+ * @li #EINA_ERROR_CONVERT_P_NOT_FOUND if no p is found,
+ * @li #EINA_ERROR_CONVERT_OUTRUN_STRING_LENGTH if @p length is not
+ * correct.
+ *
+ * In those cases, or if @p fp is @c NULL, #EINA_FALSE is returned,
+ * otherwise @p fp is computed and #EINA_TRUE is returned.
+ *
+ * @note The code uses eina_convert_atod() and do the correct bit
+ * shift to compute the fixed point number.
+ */
+EAPI Eina_Bool
+eina_convert_atofp(const char *src, int length, Eina_F32p32 *fp)
+{
+   long long m;
+   long e;
+
+   if (!eina_convert_atod(src, length, &m, &e))
+     return EINA_FALSE;
+
+   if (!fp) return EINA_TRUE;
+
+   e += 32;
+
+   if (e > 0) *fp = m << e;
+   else *fp = m >> e;
+
+   return EINA_TRUE;
 }
 
 /**

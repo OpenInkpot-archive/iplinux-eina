@@ -1,7 +1,8 @@
 # get rid of that stupid cache mechanism
 rm -f config.cache
 
-AC_INIT([eina], [0.0.2.062], [enlightenment-devel@lists.sourceforge.net])
+release="ver-svn-04"
+AC_INIT([eina], [0.9.9.063], [enlightenment-devel@lists.sourceforge.net])
 AC_PREREQ([2.60])
 AC_CONFIG_SRCDIR([configure.ac])
 AC_CONFIG_MACRO_DIR([m4])
@@ -9,8 +10,9 @@ AC_CANONICAL_BUILD
 AC_CANONICAL_HOST
 AC_ISC_POSIX
 
-AM_INIT_AUTOMAKE(1.6 dist-bzip2)
-AM_CONFIG_HEADER(config.h)
+AM_INIT_AUTOMAKE([1.6 dist-bzip2])
+AM_CONFIG_HEADER([config.h])
+m4_ifdef([AM_SILENT_RULES], [AM_SILENT_RULES([yes])])
 
 AC_LIBTOOL_WIN32_DLL
 define([AC_LIBTOOL_LANG_CXX_CONFIG], [:])dnl
@@ -28,7 +30,8 @@ AC_SUBST(version_info)
 
 ### Needed information
 
-release="ver-svn-03"
+requirement_eina=""
+
 case "$host_os" in
    mingw32ce* | cegcc*)
       MODULE_ARCH="$host_os-$host_cpu"
@@ -49,6 +52,12 @@ EFL_CHECK_CPU_ALTIVEC([have_altivec="yes"], [have_altivec="no"])
 
 EFL_CHECK_PTHREAD([have_pthread="yes"], [have_pthread="no"])
 
+if test "x${have_pthread}" = "xyes"; then
+   AC_CHECK_LIB(pthread, pthread_spin_init,
+   		[
+		  AC_DEFINE(EINA_PTHREAD_SPIN, 1, [Build eina_log lock using pthread_spin])
+		])
+fi
 
 ### Additional options to configure
 
@@ -93,6 +102,34 @@ if test "x$have_safety_checks" = "xyes"; then
   EINA_CONFIGURE_SAFETY_CHECKS="#define EINA_SAFETY_CHECKS"
 fi
 AC_SUBST(EINA_CONFIGURE_SAFETY_CHECKS)
+
+with_max_log_level="<unset>"
+AC_ARG_WITH(internal-maximum-log-level,
+   [AC_HELP_STRING([--with-internal-maximum-log-level=NUMBER],
+                   [limit eina internal log level to the given number, any call to EINA_LOG() with values greater than this will be compiled out, ignoring runtime settings, but saving function calls.])],
+   [
+    if test "x${withval}" != "xno"; then
+       if echo "${withval}" | grep '^[[0-9]]\+$' >/dev/null 2>/dev/null; then
+          AC_MSG_NOTICE([ignoring any EINA_LOG() with level greater than ${withval}])
+          AC_DEFINE_UNQUOTED(EINA_LOG_LEVEL_MAXIMUM, ${withval}, [if set, logging is limited to this amount.])
+          with_max_log_level="${withval}"
+       else
+          AC_MSG_ERROR([--with-internal-maximum-log-level takes a decimal number, got "${withval}" instead.])
+       fi
+    fi
+    ], [:])
+
+AC_ARG_ENABLE([amalgamation],
+   [AC_HELP_STRING([--enable-amalgamation], [enable generation of one single file with all source code in it, helps compiler optimizations.])],
+   [if test "x${enableval}" = "xyes"; then
+       do_amalgamation="yes"
+    else
+       do_amalgamation="no"
+    fi
+   ],
+   [do_amalgamation="no"]
+)
+AM_CONDITIONAL(EINA_AMALGAMATION, test "x${do_amalgamation}" = "xyes")
 
 # Choose best memory pool
 AC_ARG_ENABLE([default-mempool],
@@ -158,6 +195,14 @@ AC_PROG_CC
 # pkg-config
 PKG_PROG_PKG_CONFIG
 
+# Check whether pkg-config supports Requires.private
+if $PKG_CONFIG --atleast-pkgconfig-version 0.22; then
+   pkgconfig_requires_private="Requires.private"
+else
+   pkgconfig_requires_private="Requires"
+fi
+AC_SUBST(pkgconfig_requires_private)
+
 # doxygen program for documentation building
 
 EFL_CHECK_DOXYGEN([build_doc="yes"], [build_doc="no"])
@@ -167,12 +212,16 @@ EFL_CHECK_DOXYGEN([build_doc="yes"], [build_doc="no"])
 
 # Evil library for compilation on Windows CE
 
+EFL_EINA_BUILD=""
 case "$host_os" in
    mingw* | cegcc*)
-   PKG_CHECK_MODULES([EVIL], [evil])
-   AC_DEFINE(HAVE_EVIL, 1, [Set to 1 if evil package is installed])
+      PKG_CHECK_MODULES([EVIL], [evil])
+      AC_DEFINE(HAVE_EVIL, 1, [Set to 1 if evil package is installed])
+      requirement_eina="evil"
+      EFL_EINA_BUILD="-DEFL_EINA_BUILD"
    ;;
 esac
+AC_SUBST(EFL_EINA_BUILD)
 
 # Check ememoa memory pool library
 
@@ -208,6 +257,9 @@ AC_HEADER_ASSERT
 AC_HEADER_DIRENT
 AC_HEADER_TIME
 
+AC_CHECK_HEADER([fnmatch.h],
+   [dummy="yes"],
+   [AC_MSG_ERROR([Cannot find fnmatch.h. Make sure your CFLAGS environment variable contains include lines for the location of this file. MinGW users: see the INSTALL file])])
 
 ### Checks for types
 
@@ -232,27 +284,41 @@ case "$host_os" in
       ;;
 esac
 
-EINA_CFLAGS="${EFL_COVERAGE_CFLAGS}"
+EINA_CFLAGS=
 case "${host_os}" in
    cegcc*)
-      EINA_CFLAGS="${EINA_CFLAGS} ${EVIL_CFLAGS} -mwin32"
+      EINA_CFLAGS="${EVIL_CFLAGS} -mwin32"
    ;;
    mingw*)
-      EINA_CFLAGS="${EINA_CFLAGS} ${EVIL_CFLAGS}"
+      EINA_CFLAGS="${EVIL_CFLAGS}"
    ;;
 esac
 
-if test "x$enable_coverage" = "xyes" ; then
-   EINA_CFLAGS="${EINA_CFLAGS} ${EFL_DEBUG_CFLAGS}"
+if ! test "x${VMIC}" = "x" ; then
+   CFLAGS_save="${CFLAGS}"
+   CFLAGS="${CFLAGS} -Wall -W"
+   AC_COMPILE_IFELSE(
+      [AC_LANG_PROGRAM([[]])],
+      [have_Wall="yes"],
+      [have_Wall="no"])
+   AC_MSG_CHECKING([whether the compiler supports -Wall])
+   AC_MSG_RESULT([${have_Wall}])
+   CFLAGS="${CFLAGS_save}"
+   if test "x${have_Wall}" = "xyes" ; then
+      EINA_CFLAGS="${EINA_CFLAGS} -Wall -W" # -Werror
+   fi
 fi
 
-if ! test "${VMIC}" = "x" ; then
-   EINA_CFLAGS="${EINA_CFLAGS} -Wall -W" # -Werror
-fi
-
-GCC_MAJOR_VERSION=`$CC -dumpversion | sed "s/\..*//"`
-
-if test "$GCC_MAJOR_VERSION" = "3" ; then
+CFLAGS_save="${CFLAGS}"
+CFLAGS="${CFLAGS} -fno-strict-aliasing"
+AC_COMPILE_IFELSE(
+   [AC_LANG_PROGRAM([[]])],
+   [have_no_strict_aliasing="yes"],
+   [have_no_strict_aliasing="no"])
+AC_MSG_CHECKING([whether the compiler supports -fno-strict-aliasing])
+AC_MSG_RESULT([${have_no_strict_aliasing}])
+CFLAGS="${CFLAGS_save}"
+if test "x${have_no_strict_aliasing}" = "xyes" ; then
    EINA_CFLAGS="${EINA_CFLAGS} -fno-strict-aliasing"
 fi
 
@@ -261,28 +327,27 @@ AC_SUBST(EINA_CFLAGS)
 
 
 ### Checks for linker characteristics
-EINA_LIBS="${EFL_COVERAGE_LIBS}"
+EINA_LIBS=
 lt_enable_auto_import=""
 case "${host_os}" in
    mingw* | cegcc*)
-      AC_DEFINE(EFL_EINA_BUILD, 1, [Define to mention that eina is built])
-      EINA_LIBS="${EINA_LIBS} -ldl ${EVIL_LIBS} -lm"
+      EINA_LIBS="-ldl ${EVIL_LIBS} -lm"
       lt_enable_auto_import="-Wl,--enable-auto-import"
    ;;
    dragonfly*|openbsd*)
-      EINA_LIBS="${EINA_LIBS} -lm"
+      EINA_LIBS="-lm"
    ;;
    freebsd*|netbsd*)
-      EINA_LIBS="${EINA_LIBS} -lrt -lm"
+      EINA_LIBS="-lrt -lm"
    ;;
    darwin*)
-      EINA_LIBS="${EINA_LIBS} -lm"
+      EINA_LIBS="-lm"
    ;;
    cygwin*)
-      EINA_LIBS="${EINA_LIBS} -ldl -lm"
+      EINA_LIBS="-ldl -lm"
    ;;
    *)
-      EINA_LIBS="${EINA_LIBS} -ldl -lrt -lm"
+      EINA_LIBS="-ldl -lrt -lm"
    ;;
 esac
 AC_SUBST(EINA_LIBS)
@@ -316,6 +381,20 @@ case "$host_os" in
 esac
 AC_SUBST(dlopen_libs)
 
+fnmatch_libs=""
+AC_CHECK_FUNCS([fnmatch], [res="yes"], [res="no"])
+if test "x$res" = "xno"; then
+   AC_SEARCH_LIBS([fnmatch],
+      [fnmatch evil iberty],
+      [res="yes"],
+      [res="no"])
+   if test "x$res" = "xno"; then
+      AC_MSG_ERROR([Cannot find fnmatch() in neither libc nor libfnmatch, nor libiberty, nor libevil])
+   fi
+   fnmatch_libs="${ac_cv_search_fnmatch}"
+fi
+AC_SUBST(fnmatch_libs)
+
 ### Modules
 
 EINA_CHECK_MODULE([chained-pool], [yes], [chained pool])
@@ -330,11 +409,20 @@ EINA_CHECK_MODULE([pass-through], [yes], [pass through])
 ### Unit tests, coverage and benchmarking
 
 EFL_CHECK_TESTS([enable_tests="yes"], [enable_tests="no"])
+
 EFL_CHECK_COVERAGE([${enable_tests}], [enable_coverage="yes"], [enable_coverage="no"])
+EINA_CFLAGS="${EINA_CFLAGS} ${EFL_COVERAGE_CFLAGS}"
+EINA_LIBS="${EINA_LIBS} ${EFL_COVERAGE_LIBS}"
+if test "x$enable_coverage" = "xyes" ; then
+   EINA_CFLAGS="${EINA_CFLAGS} ${EFL_DEBUG_CFLAGS}"
+fi
+
 EFL_CHECK_BENCHMARK([enable_benchmark="yes"], [enable_benchmark="no"])
 EINA_BENCH_MODULE([evas], [${enable_benchmark}], [evas], [enable_benchmark_evas="yes"], [enable_benchmark_evas="no"])
 EINA_BENCH_MODULE([ecore], [${enable_benchmark}], [ecore], [enable_benchmark_ecore="yes"], [enable_benchmark_ecore="no"])
 EINA_BENCH_MODULE([glib], [${enable_benchmark}], [glib-2.0], [enable_benchmark_glib="yes"], [enable_benchmark_glib="no"])
+
+AC_SUBST(requirement_eina)
 
 ### Create the .pc.in file according to the major version
 #cat > ${srcdir}/eina-${VMAJ}.pc.in << EOF
@@ -388,9 +476,11 @@ echo "Configuration Options Summary:"
 echo
 echo "  Magic debug..........: ${have_magic_debug}"
 echo "  Safety checks........: ${have_safety_checks}"
+echo "  Maximum log level....: ${with_max_log_level}"
 echo "  Report string usage..: ${have_stringshare_usage}"
 echo "  Default mempool......: ${have_default_mempool}"
 echo "  Thread Support.......: ${have_pthread}"
+echo "  Amalgamation.........: ${do_amalgamation}"
 echo
 echo "  Documentation........: ${build_doc}"
 echo "  Tests................: ${enable_tests}"
@@ -403,12 +493,11 @@ echo "    Ecore..............: ${enable_benchmark_ecore}"
 echo "    E17 real data......: ${enable_benchmark_e17}"
 fi
 echo
-echo "CPU Specific Extensions:"
-echo
-echo "  MMX..................: ${have_mmx}"
-echo "  SSE..................: ${have_sse}"
-echo "  SSE2.................: ${have_sse2}"
-echo "  ALTIVEC..............: ${have_altivec}"
+echo "  CPU Specific Extensions:"
+echo "    MMX................: ${have_mmx}"
+echo "    SSE................: ${have_sse}"
+echo "    SSE2...............: ${have_sse2}"
+echo "    ALTIVEC............: ${have_altivec}"
 echo
 echo "  Memory pools:"
 echo "    Chained pool.......: ${enable_chained_pool}"
@@ -417,13 +506,13 @@ echo "    Ememoa unknown.....: ${enable_ememoa_unknown}"
 echo "    Fixed bitmap.......: ${enable_fixed_bitmap}"
 echo "    Pass through.......: ${enable_pass_through}"
 echo
-echo "  Installation.........: make install"
+echo "Compilation............: make (or gmake)"
+echo "  CPPFLAGS.............: $CPPFLAGS"
+echo "  CFLAGS...............: $CFLAGS"
+echo "  LDFLAGS..............: $LDFLAGS"
 echo
-echo "    prefix.............: $prefix"
-echo
-echo "Now type 'make' ('gmake' on some systems) to compile $PACKAGE,"
-echo "and then afterwards as root (or the user who will install this), type"
-echo "'make install'. Change users with 'su' or 'sudo' appropriately."
+echo "Installation...........: make install (as root if needed, with 'su' or 'sudo')"
+echo "  prefix...............: $prefix"
 echo
 if test "x${have_static_module}" = "xyes" ; then
 echo -e "\0033\01331;31mWarning\0033\01331;0m: You are trying to link statically one or more modules to Eina."

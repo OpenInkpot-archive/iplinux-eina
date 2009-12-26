@@ -2,7 +2,7 @@
 <VisualStudioProject
 	ProjectType="Visual C++"
 	Version="8.00"
-	Name="eina"
+	Name="libeina"
 	ProjectGUID="{689B4F2B-666D-439F-9BF3-1203D813DE3F}"
 	RootNamespace="eina"
 	Keyword="Win32Proj"
@@ -64,8 +64,8 @@
 				Name="VCLinkerTool"
 				IgnoreImportLibrary="false"
 				LinkLibraryDependencies="true"
-				AdditionalDependencies="libdl.lib"
-				OutputFile="$(OutDir)\eina.dll"
+				AdditionalDependencies="libevil.lib libdl.lib"
+				OutputFile="$(OutDir)\libeina.dll"
 				LinkIncremental="2"
 				AdditionalLibraryDirectories="$(LIB); $(DebugLibraryDirectory)"
 				GenerateDebugInformation="true"
@@ -144,8 +144,8 @@
 				Name="VCLinkerTool"
 				IgnoreImportLibrary="false"
 				LinkLibraryDependencies="true"
-				AdditionalDependencies="libdl.lib"
-				OutputFile="$(OutDir)\eina.dll"
+				AdditionalDependencies="libevil.lib libdl.lib"
+				OutputFile="$(OutDir)\libeina.dll"
 				LinkIncremental="1"
 				AdditionalLibraryDirectories="$(LIB); $(ReleaseLibraryDirectory)"
 				GenerateDebugInformation="true"
@@ -221,6 +221,10 @@
 				>
 			</File>
 			<File
+				RelativePath="..\..\src\lib\eina_hamster.c"
+				>
+			</File>
+			<File
 				RelativePath="..\..\src\lib\eina_hash.c"
 				>
 			</File>
@@ -241,11 +245,19 @@
 				>
 			</File>
 			<File
+				RelativePath="..\..\src\lib\eina_log.c"
+				>
+			</File>
+			<File
 				RelativePath="..\..\src\lib\eina_magic.c"
 				>
 			</File>
 			<File
 				RelativePath="..\..\src\lib\eina_main.c"
+				>
+			</File>
+			<File
+				RelativePath="..\..\src\lib\eina_matrixsparse.c"
 				>
 			</File>
 			<File
@@ -262,6 +274,10 @@
 			</File>
 			<File
 				RelativePath="..\..\src\lib\eina_rectangle.c"
+				>
+			</File>
+			<File
+				RelativePath="..\..\src\lib\eina_safety_checks.c"
 				>
 			</File>
 			<File
@@ -315,11 +331,15 @@
 				>
 			</File>
 			<File
-				RelativePath="..\..\src\include\eina_f16p16.h"
+				RelativePath="..\..\src\include\eina_file.h"
 				>
 			</File>
 			<File
-				RelativePath="..\..\src\include\eina_file.h"
+				RelativePath="..\..\src\include\eina_fp.h"
+				>
+			</File>
+			<File
+				RelativePath="..\..\src\include\eina_hamster.h"
 				>
 			</File>
 			<File
@@ -343,11 +363,19 @@
 				>
 			</File>
 			<File
+				RelativePath="..\..\src\include\eina_log.h"
+				>
+			</File>
+			<File
 				RelativePath="..\..\src\include\eina_magic.h"
 				>
 			</File>
 			<File
 				RelativePath="..\..\src\include\eina_main.h"
+				>
+			</File>
+			<File
+				RelativePath="..\..\src\include\eina_matrixsparse.h"
 				>
 			</File>
 			<File
@@ -371,11 +399,19 @@
 				>
 			</File>
 			<File
+				RelativePath="..\..\src\include\eina_safety_checks.h"
+				>
+			</File>
+			<File
 				RelativePath="..\..\src\include\eina_stringshare.h"
 				>
 			</File>
 			<File
 				RelativePath="..\..\src\include\eina_tiler.h"
+				>
+			</File>
+			<File
+				RelativePath="..\..\src\include\eina_trash.h"
 				>
 			</File>
 			<File

@@ -21,7 +21,9 @@
 #endif
 
 #include "eina_suite.h"
-#include "eina_mempool.h"
+#include "Eina.h"
+#include <stdio.h>
+#include <string.h>
 
 typedef struct _Eina_Test_Case Eina_Test_Case;
 struct _Eina_Test_Case
@@ -33,6 +35,7 @@ struct _Eina_Test_Case
 static const Eina_Test_Case etc[] = {
   { "Array", eina_test_array },
   { "String Share", eina_test_stringshare },
+  { "Log", eina_test_log },
   { "Error", eina_test_error },
   { "Magic", eina_test_magic },
   { "Inlist", eina_test_inlist },
@@ -50,11 +53,34 @@ static const Eina_Test_Case etc[] = {
   { "Benchmark", eina_test_benchmark },
   { "Mempool", eina_test_mempool },
   { "Rectangle", eina_test_rectangle },
+  { "Matrix Sparse", eina_test_matrixsparse },
+  { "Eina Tiler", eina_test_tiler },
   { NULL, NULL }
 };
 
+static void
+_list_tests(void)
+{
+   const Eina_Test_Case *itr = etc;
+   fputs("Available Test Cases:\n", stderr);
+   for (; itr->test_case != NULL; itr++)
+     fprintf(stderr, "\t%s\n", itr->test_case);
+}
+
+static Eina_Bool
+_use_test(int argc, const char **argv, const char *test_case)
+{
+   if (argc < 1)
+     return 1;
+
+   for (; argc > 0; argc--, argv++)
+     if (strcmp(test_case, *argv) == 0)
+       return 1;
+   return 0;
+}
+
 Suite *
-eina_build_suite(void)
+eina_build_suite(int argc, const char **argv)
 {
    TCase *tc;
    Suite *s;
@@ -64,6 +90,7 @@ eina_build_suite(void)
 
    for (i = 0; etc[i].test_case != NULL; ++i)
      {
+	if (!_use_test(argc, argv, etc[i].test_case)) continue;
 	tc = tcase_create(etc[i].test_case);
 
 	etc[i].build(tc);
@@ -80,7 +107,7 @@ eina_build_suite(void)
 static Eina_Array *_modules;
 static void _mempool_init(void)
 {
-    eina_mempool_init();
+    eina_init();
     /* force modules to be loaded in case they are not installed */
     _modules = eina_module_list_get(NULL, PACKAGE_BUILD_DIR"/src/modules", 1, NULL, NULL);
     eina_module_list_load(_modules);
@@ -90,18 +117,33 @@ static void _mempool_shutdown(void)
 {
    eina_module_list_flush(_modules);
    /* TODO delete the list */
-   eina_mempool_shutdown();
+   eina_shutdown();
 }
 
 int
-main(void)
+main(int argc, char **argv)
 {
    Suite *s;
    SRunner *sr;
-   int failed_count;
+   int i, failed_count;
 
+   for (i = 1; i < argc; i++)
+     if ((strcmp(argv[i], "-h") == 0) ||
+	 (strcmp(argv[i], "--help") == 0))
+       {
+	  fprintf(stderr, "Usage:\n\t%s [test_case1 .. [test_caseN]]\n",
+		  argv[0]);
+	  _list_tests();
+	  return 0;
+       }
+     else if ((strcmp(argv[i], "-l") == 0) ||
+	      (strcmp(argv[i], "--list") == 0))
+       {
+	  _list_tests();
+	  return 0;
+       }
 
-   s = eina_build_suite();
+   s = eina_build_suite(argc - 1, (const char **)argv + 1);
    sr = srunner_create(s);
 
    _mempool_init();

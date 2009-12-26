@@ -22,6 +22,7 @@
 /**
  * @mainpage Eina
  * @author Jorge Luis Zapata Muga
+ * @author Cedric Bail
  * @date 2008
  *
  * @section eina_toc_sec Table of contents
@@ -52,6 +53,8 @@
  *     <li> @ref eina_counter_subsec
  *     <li> @ref eina_error_subsec
  *   </ul>
+ *   <li> @ref thread_safety_sec
+ *   <li> @ref debugging_sec
  * </ul>
  *
  * @section eina_intro_sec Introduction
@@ -132,6 +135,14 @@
  *
  * Take a look at the @ref tutorial_error_page.
  *
+ * @section thread_safety_sec Thread safety
+ *
+ * Add some stuff for thread safety doc
+ *
+ * @section debugging_sec Debugging
+ *
+ * Add some stuff for the debug doc
+ *
  * @todo add debug function
  * @todo add magic function
  * @todo add other todo items :)
@@ -144,7 +155,7 @@ extern "C" {
 #include "eina_config.h"
 #include "eina_types.h"
 #include "eina_main.h"
-#include "eina_f16p16.h"
+#include "eina_fp.h"
 #include "eina_rectangle.h"
 #include "eina_inlist.h"
 #include "eina_file.h"
@@ -155,6 +166,7 @@ extern "C" {
 #include "eina_module.h"
 #include "eina_mempool.h"
 #include "eina_error.h"
+#include "eina_log.h"
 #include "eina_array.h"
 #include "eina_stringshare.h"
 #include "eina_magic.h"
@@ -166,6 +178,8 @@ extern "C" {
 #include "eina_convert.h"
 #include "eina_cpu.h"
 #include "eina_tiler.h"
+#include "eina_hamster.h"
+#include "eina_matrixsparse.h"
 
 #ifdef __cplusplus
 }

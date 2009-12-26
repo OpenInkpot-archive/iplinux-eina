@@ -23,21 +23,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "eina_counter.h"
 #include "eina_suite.h"
-
-START_TEST(eina_counter_init_shutdown)
-{
-   eina_counter_init();
-    eina_counter_init();
-    eina_counter_shutdown();
-    eina_counter_init();
-     eina_counter_init();
-     eina_counter_shutdown();
-    eina_counter_shutdown();
-   eina_counter_shutdown();
-}
-END_TEST
+#include "Eina.h"
+#include "eina_safety_checks.h"
 
 START_TEST(eina_counter_simple)
 {
@@ -45,7 +33,7 @@ START_TEST(eina_counter_simple)
    char *dump;
    int i;
 
-   eina_counter_init();
+   eina_init();
 
    cnt = eina_counter_new("eina_test");
    fail_if(!cnt);
@@ -53,14 +41,20 @@ START_TEST(eina_counter_simple)
    eina_counter_start(cnt);
 
    for (i = 0; i < 100000; ++i)
-     malloc(sizeof(long int));
+     {
+	void *tmp = malloc(sizeof(long int));
+	free(tmp);
+     }
 
    eina_counter_stop(cnt, i);
 
    eina_counter_start(cnt);
 
    for (i = 0; i < 200000; ++i)
-     malloc(sizeof(long int));
+     {
+	void *tmp = malloc(sizeof(long int));
+	free(tmp);
+     }
 
    eina_counter_stop(cnt, i);
 
@@ -73,16 +67,15 @@ START_TEST(eina_counter_simple)
 
    eina_counter_free(cnt);
 
-   eina_counter_shutdown();
+   eina_shutdown();
 }
 END_TEST
 
 START_TEST(eina_counter_break)
 {
    Eina_Counter *cnt;
-   char *dump;
 
-   eina_counter_init();
+   eina_init();
 
    cnt = eina_counter_new("eina_test");
    fail_if(!cnt);
@@ -91,18 +84,24 @@ START_TEST(eina_counter_break)
 
    eina_counter_free(cnt);
 
-   dump = eina_counter_dump(NULL);
-   fail_if(dump);
+#ifdef EINA_SAFETY_CHECKS
+   {
+      char *dump;
 
-   free(dump);
+      fprintf(stderr, "you should have a safety check failure below:\n");
+      dump = eina_counter_dump(NULL);
+      fail_if(dump);
+      fail_if(eina_error_get() != EINA_ERROR_SAFETY_FAILED);
+      free(dump);
+   }
+#endif
 
-   eina_counter_shutdown();
+   eina_shutdown();
 }
 END_TEST
 
 void eina_test_counter(TCase *tc)
 {
-   tcase_add_test(tc, eina_counter_init_shutdown);
    tcase_add_test(tc, eina_counter_simple);
    tcase_add_test(tc, eina_counter_break);
 }

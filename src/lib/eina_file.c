@@ -17,23 +17,12 @@
  */
 
 #ifdef HAVE_CONFIG_H
-# include <config.h>
+# include "config.h"
 #endif
-
-#include <string.h>
 
 #ifndef _WIN32
 # define _GNU_SOURCE
-# include <sys/types.h>
-# include <sys/stat.h>
-# include <unistd.h>
-# include <dirent.h>
-#else
-# define WIN32_LEAN_AND_MEAN
-# include <windows.h>
-# undef WIN32_LEAN_AND_MEAN
-# include <Evil.h>
-#endif /* _WIN2 */
+#endif
 
 #ifdef HAVE_ALLOCA_H
 # include <alloca.h>
@@ -52,15 +41,32 @@ extern "C"
 void *alloca (size_t);
 #endif
 
+#include <string.h>
+
+#ifndef _WIN32
+# include <sys/types.h>
+# include <sys/stat.h>
+# include <unistd.h>
+# include <dirent.h>
+#else
+# define WIN32_LEAN_AND_MEAN
+# include <windows.h>
+# undef WIN32_LEAN_AND_MEAN
+# include <Evil.h>
+#endif /* _WIN2 */
+
 #ifndef _WIN32
 # define PATH_DELIM '/'
 #else
 # define PATH_DELIM '\\'
 #endif
 
-#include "eina_file.h"
+#include "eina_config.h"
 #include "eina_private.h"
+
+/* undefs EINA_ARG_NONULL() so NULL checks are not compiled out! */
 #include "eina_safety_checks.h"
+#include "eina_file.h"
 
 /*============================================================================*
  *                                 Global                                     *
@@ -80,10 +86,6 @@ void *alloca (size_t);
  * file.
  * @li eina_file_split() split a path into all the subdirectories that
  * compose it, according to the separator of the file system.
- *
- * @warning eina_file_split() uses the @ref Eina_Array_Group module
- * but does not initialize it. eina_array_init() and
- * eina_array_shutdown() must be called if this function is used.
  *
  * @{
  */
@@ -234,10 +236,6 @@ eina_file_dir_list(const char *dir, Eina_Bool recursive, Eina_File_Dir_List_Cb c
  * filesystem. If  @p path is @c NULL or if the array can not be
  * created, @c NULL is returned, otherwise, an array with the
  * different parts of @p path is returned.
- *
- * @warning This function uses the @ref Eina_Array_Group module but
- * does not initialize it. eina_array_init() and eina_array_shutdown()
- * must be called if this function is used.
  */
 EAPI Eina_Array *
 eina_file_split(char *path)
