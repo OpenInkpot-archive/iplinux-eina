@@ -1,6 +1,6 @@
 eina (0.9.9.063-2) zelazny; urgency=low
 
-  * Disable magic debug
+  * Enable magic debug
   * Properly disable unused mempools
 
  -- Mikhail Gusarov <dottedmag@dottedmag.net>  Thu, 14 Jan 2010 05:55:13 +0600
