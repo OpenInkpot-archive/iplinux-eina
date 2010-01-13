@@ -4,8 +4,7 @@ include /usr/share/cdbs/1/rules/debhelper.mk
 include /usr/share/cdbs/1/class/autotools.mk
 
 DEB_CONFIGURE_EXTRA_FLAGS := --disable-rpath \
-                             --enable-static-chained-pool \
-                             --disable-magic-debug \
+                             --enable-magic-debug \
 							 --disable-safety-checks \
 							 --disable-assert \
 							 --with-internal-maximum-log-level=3 \
@@ -13,7 +12,7 @@ DEB_CONFIGURE_EXTRA_FLAGS := --disable-rpath \
 							 --disable-doc \
 							 --enable-chained-pool=static \
 							 --disable-ememoa-fixed \
-							 --disable-emema-unknown \
+							 --disable-ememoa-unknown \
 							 --disable-fixed-bitmap \
 							 --disable-pass-through \
 							 --host=$(DEB_HOST_GNU_TYPE)
