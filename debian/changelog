@@ -1,3 +1,10 @@
+eina (0.9.9.063-4) zelazny; urgency=low
+
+  * Fix wrong prototype of eina_module_list_get to avoid segfaults
+  * Explain --enable-safety-checks in debian/rules
+
+ -- Mikhail Gusarov <dottedmag@dottedmag.net>  Fri, 15 Jan 2010 04:54:22 +0600
+
 eina (0.9.9.063-3) zelazny; urgency=low
 
   * Enable safety checks to work around eina_module sefault
