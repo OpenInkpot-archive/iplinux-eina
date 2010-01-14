@@ -1,3 +1,9 @@
+eina (0.9.9.063-3) zelazny; urgency=low
+
+  * Enable safety checks to work around eina_module sefault
+
+ -- Mikhail Gusarov <dottedmag@dottedmag.net>  Thu, 14 Jan 2010 14:27:12 +0600
+
 eina (0.9.9.063-2) zelazny; urgency=low
 
   * Enable magic debug
