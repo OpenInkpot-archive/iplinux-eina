@@ -3,6 +3,15 @@
 include /usr/share/cdbs/1/rules/debhelper.mk
 include /usr/share/cdbs/1/class/autotools.mk
 
+#
+# --enable-magic-debug: "our RTTI". Useful to spot errors, so keep it.
+#
+# --enable-safety-checks: beside other things this switch disables EINA_NONNULL
+# macros which are generously scattered all around EFL headers. EINA_NONNULL is
+# dangerous as it makes compiler omit any branches which test arguments for NULL
+# and hence any NULL passed makes a runtime error. Unfortunately even Ecore,
+# Edje and Eina themselves pass NULL to args marked as nonnull.
+#
 DEB_CONFIGURE_EXTRA_FLAGS := --disable-rpath \
                              --enable-magic-debug \
 							 --enable-safety-checks \
