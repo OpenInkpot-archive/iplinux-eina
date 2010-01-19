@@ -1,5 +1,5 @@
 Source: eina
-Section: core
+Section: host/tools
 Priority: optional
 Maintainer: Mikhail Gusarov <dottedmag@dottedmag.net>
 Uploaders: Alexander Kerner <lunohod@openinkpot.org>
@@ -9,6 +9,7 @@ Homepage: http://www.enlightenment.org
 XCS-Cross-Host-Build-Depends: debhelper (>= 6), cdbs, cdbs-embedded, automake, libtool, pkg-config
 XS-Vcs-Git: git://git.iplinux.org/eina.git
 XS-Vcs-Browser: http://git.iplinux.org/eina.git
+XCS-Cross-Mode: both
 
 Package: libeina-svn-05
 Architecture: any
