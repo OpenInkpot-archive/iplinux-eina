@@ -1,3 +1,9 @@
+eina (0.9.9.063-5) zelazny; urgency=low
+
+  * Build eina both as host/tools and as target package.
+
+ -- Mikhail Gusarov <dottedmag@dottedmag.net>  Tue, 19 Jan 2010 19:27:16 +0600
+
 eina (0.9.9.063-4) zelazny; urgency=low
 
   * Fix wrong prototype of eina_module_list_get to avoid segfaults
