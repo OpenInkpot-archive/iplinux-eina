@@ -11,7 +11,7 @@ XS-Vcs-Git: git://git.iplinux.org/eina.git
 XS-Vcs-Browser: http://git.iplinux.org/eina.git
 XCS-Cross-Mode: both
 
-Package: libeina-svn-05
+Package: libeina-svn-06
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}
 Provides: libeina0
@@ -31,7 +31,7 @@ Description: Enlightenment Foundation Library providing optimized data types
 Package: libeina-dev
 Section: libdevel
 Architecture: any
-Depends: ${misc:Depends}, libeina-svn-05 (= ${binary:Version})
+Depends: ${misc:Depends}, libeina-svn-06 (= ${binary:Version})
 Description: Development files for libeina
  Eina is a multi-platform library that provides optimized data types and a few
  tools. It supports the following data types:
@@ -50,7 +50,7 @@ Description: Development files for libeina
 Package: libeina-dbg
 Architecture: any
 Section: debug
-Depends: ${misc:Depends}, libeina-svn-05 (= ${binary:Version})
+Depends: ${misc:Depends}, libeina-svn-06 (= ${binary:Version})
 Priority: extra
 Description: debugging symbols for use with libeina
  Eina is a multi-platform library that provides optimized data types and a few
