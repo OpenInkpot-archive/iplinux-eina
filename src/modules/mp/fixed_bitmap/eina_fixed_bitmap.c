@@ -83,8 +83,8 @@ _eina_fixed_cmp_key(const Eina_Rbtree *node, const void *key, __UNUSED__ int len
 {
    const void *a = node;
    const void *b = key;
-   int delta;
-   int limit;
+   ssize_t delta;
+   ssize_t limit;
 
    limit = sizeof (Eina_Fixed_Bitmap_Pool) + mp->item_size * 32;
    delta = (char *)a - (char *)b;
@@ -108,7 +108,7 @@ eina_fixed_bitmap_malloc(void *data, __UNUSED__ unsigned int size)
    Eina_Fixed_Bitmap *mp = data;
    Eina_Fixed_Bitmap_Pool *pool = NULL;
    void *ptr;
-   int index;
+   int idx;
 
    if (mp->head)
      {
@@ -133,9 +133,9 @@ eina_fixed_bitmap_malloc(void *data, __UNUSED__ unsigned int size)
 	mp->lookup = eina_rbtree_inline_insert(mp->lookup, EINA_RBTREE_GET(pool), EINA_RBTREE_CMP_NODE_CB(_eina_fixed_cmp), NULL);
      }
 
-   index = ffs(pool->bitmask) - 1;
-   pool->bitmask &= ~(1 << index);
-   ptr = (unsigned char*) (pool + 1) + index * mp->item_size;
+   idx = ffs(pool->bitmask) - 1;
+   pool->bitmask &= ~(1 << idx);
+   ptr = (unsigned char*) (pool + 1) + idx * mp->item_size;
 
    if (pool->bitmask == 0)
      mp->head = eina_inlist_demote(mp->head, EINA_INLIST_GET(pool));
@@ -150,7 +150,7 @@ eina_fixed_bitmap_free(void *data, void *ptr)
    Eina_Fixed_Bitmap_Pool *pool;
    void *a;
    Eina_Bool push_front = EINA_FALSE;
-   int delta;
+   ssize_t delta;
 
    pool = (Eina_Fixed_Bitmap_Pool*) eina_rbtree_inline_lookup(mp->lookup,
 							      ptr, 0,

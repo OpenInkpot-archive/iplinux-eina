@@ -35,13 +35,14 @@ struct _Eina_Benchmark_Case
 };
 
 static const Eina_Benchmark_Case etc[] = {
-  { "Hash", eina_bench_hash },
-  { "Array vs List vs Inlist", eina_bench_array },
-  { "Stringshare", eina_bench_stringshare },
-  { "Convert", eina_bench_convert },
-  { "Sort", eina_bench_sort },
-  { "Mempool", eina_bench_mempool },
-  { "Rectangle_Pool", eina_bench_rectangle_pool },
+  /* { "Hash", eina_bench_hash }, */
+  /* { "Array vs List vs Inlist", eina_bench_array }, */
+  /* { "Stringshare", eina_bench_stringshare }, */
+  /* { "Convert", eina_bench_convert }, */
+  /* { "Sort", eina_bench_sort }, */
+  /* { "Mempool", eina_bench_mempool }, */
+  /* { "Rectangle_Pool", eina_bench_rectangle_pool }, */
+  { "Render Loop", eina_bench_quadtree },
   { NULL, NULL }
 };
 
@@ -59,7 +60,7 @@ static void _mempool_init(void)
 
 static void _mempool_shutdown(void)
 {
-   eina_module_list_flush(_modules);
+   eina_module_list_free(_modules);
    /* TODO delete the list */
    eina_shutdown();
 }
@@ -85,17 +86,6 @@ main(int argc, char **argv)
 	etc[i].build(test);
 
 	ea = eina_benchmark_run(test);
-	if (ea)
-	  {
-	     Eina_Array_Iterator it;
-	     char *tmp;
-	     unsigned int i;
-
-	     EINA_ARRAY_ITER_NEXT(ea, i, tmp, it)
-	       free(tmp);
-
-	     eina_array_free(ea);
-	  }
 
 	eina_benchmark_free(test);
      }

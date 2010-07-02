@@ -19,7 +19,7 @@
 
 
 /**
- * @page tutorial_log_page log Tutorial
+ * @page tutorial_log_page Log Tutorial
  *
  * @section tutorial_log_introduction Introduction
  *
@@ -108,7 +108,7 @@
  *
  * EINA_LOG_LEVELS=mymodule1:5,mymodule2:2,mymodule3:0 ./myapp
  *
- * @encode
+ * @endcode
  *
  * This line would set mymodule1 level to 5, mymodule2 level to 2 and mymodule3
  * level to 0.
@@ -142,14 +142,14 @@
  * eina_log_level_set() function.
  *
  *
- * While developing your libraries or applications, you may notice that 
- * EINA_LOG_DOM_(ERR, DBG, INFO, CRIT, WARN) macros also print out 
+ * While developing your libraries or applications, you may notice that
+ * EINA_LOG_DOM_(ERR, DBG, INFO, CRIT, WARN) macros also print out
  * messages from eina itself. Here we introduce another environment variable
  * that is a bit more special: EINA_LOG_LEVELS_GLOB.
  *
  * This variable allows you to disable the logging of any/all code in eina itself.
- * This is useful when developing your libraries or applications so that you can 
- * see your own domain's messages easier without having to sift through a lot of 
+ * This is useful when developing your libraries or applications so that you can
+ * see your own domain's messages easier without having to sift through a lot of
  * internal eina debug messages. Here's an example:
  *
  * @code
@@ -158,15 +158,15 @@
  *
  * @endcode
  *
- * This will disable eina_log output from all internal eina code thus allowing 
+ * This will disable eina_log output from all internal eina code thus allowing
  * you to see your own domain messages easier.
- * 
+ *
  * @section tutorial_log_advanced_display Advanced usage of print callbacks
  *
  * The log module allows the user to change the way
  * eina_log_print() displays the messages. It suffices to pass to
  * eina_log_print_cb_set() the function used to display the
- * message. That  function must be of type #Eina_log_Print_Cb. As a
+ * message. That  function must be of type #Eina_Log_Print_Cb. As a
  * custom data can be passed to that callback, powerful display
  * messages can be displayed.
  *
@@ -255,35 +255,6 @@
  * }
  * @endcode
  *
- * @addtogroup Eina_Log_Group Log
- *
- * @{
- *
- * The default log level value is set by default to
- * #EINA_LOG_LEVEL_DBG if Eina is compiled with debug mode, or to
- * #EINA_LOG_LEVEL_ERR otherwise. That value can be overwritten by
- * setting the environment variable EINA_LOG_LEVEL. This function
- * checks the value of that environment variable in the first
- * call. Its value must be a number between 0 and 4, to match the log
- * levels #EINA_LOG_LEVEL_CRITICAL, #EINA_LOG_LEVEL_ERR,
- * #EINA_LOG_LEVEL_WARN, #EINA_LOG_LEVEL_INFO and
- * #EINA_LOG_LEVEL_DBG. That value can also be set later with
- * eina_log_log_level_set(). When logging domains are created, they
- * will get either this value or specific value given with
- * EINA_LOG_LEVELS that takes the format
- * 'domain_name:level,another_name:other_level'.
- *
- * Format and verbosity of messages depend on the logging method, see
- * eina_log_print_cb_set(). The default logging method is
- * eina_log_print_cb_stderr(), which will output fancy colored
- * messages to standard error stream. See its documentation on how to
- * disable coloring, function or file/line print.
- *
- * This module will optionally abort program execution if message
- * level is below or equal to @c EINA_LOG_LEVEL_CRITICAL and
- * @c EINA_LOG_ABORT=1.
- *
- * @}
  */
 
 #ifdef HAVE_CONFIG_H
@@ -294,6 +265,15 @@
 #include <string.h>
 #include <stdlib.h>
 #include <fnmatch.h>
+#include <assert.h>
+
+#ifndef _MSC_VER
+# include <unistd.h>
+#endif
+
+#ifdef EFL_HAVE_PTHREAD
+# include <pthread.h>
+#endif
 
 #ifdef HAVE_EVIL
 # include <Evil.h>
@@ -306,8 +286,6 @@
 /* undefs EINA_ARG_NONULL() so NULL checks are not compiled out! */
 #include "eina_safety_checks.h"
 #include "eina_log.h"
-
-#include <assert.h>
 
 /* TODO
  * + printing logs to stdout or stderr can be implemented
@@ -340,6 +318,7 @@ struct _Eina_Log_Domain_Level_Pending
 {
    EINA_INLIST;
    unsigned int level;
+   size_t namelen;
    char name[];
 };
 
@@ -359,13 +338,27 @@ static Eina_Bool _abort_on_critical = EINA_FALSE;
 static int _abort_level_on_critical = EINA_LOG_LEVEL_CRITICAL;
 
 #ifdef EFL_HAVE_PTHREAD
-#include <pthread.h>
+
 static Eina_Bool _threads_enabled = EINA_FALSE;
 static pthread_t _main_thread;
 
-#define IS_MAIN(t)  pthread_equal(t, _main_thread)
-#define IS_OTHER(t) EINA_UNLIKELY(!IS_MAIN(t))
-#define CHECK_MAIN(...)							\
+# define IS_MAIN(t)  pthread_equal(t, _main_thread)
+# define IS_OTHER(t) EINA_UNLIKELY(!IS_MAIN(t))
+
+# ifdef _WIN32
+#  define CHECK_MAIN(...)						\
+  do {									\
+     if (!IS_MAIN(pthread_self())) {					\
+	pthread_t cur;							\
+	cur = pthread_self();						\
+	fprintf(stderr,							\
+		"ERR: not main thread! current=%p, main=%p\n",	\
+		cur.p, _main_thread.p);					\
+	return __VA_ARGS__;						\
+     }									\
+  } while (0)
+# else
+#  define CHECK_MAIN(...)						\
   do {									\
      if (!IS_MAIN(pthread_self())) {					\
 	fprintf(stderr,							\
@@ -374,52 +367,87 @@ static pthread_t _main_thread;
 	return __VA_ARGS__;						\
      }									\
   } while (0)
+# endif
 
-#ifdef EINA_PTHREAD_SPIN
+# ifdef EFL_HAVE_PTHREAD_SPINLOCK
+
 static pthread_spinlock_t _log_lock;
-#define LOG_LOCK()								\
+
+#  ifdef _WIN32
+#   define LOG_LOCK()							\
+  if(_threads_enabled) \
+  do {									\
+     pthread_t cur;							\
+     cur = pthread_self();						\
+     if (0)								\
+       fprintf(stderr, "+++LOG LOG_LOCKED!   [%s, %p]\n",		\
+	       __FUNCTION__, cur.p);					\
+     if (EINA_UNLIKELY(_threads_enabled))				\
+       pthread_spin_lock(&_log_lock);					\
+  } while (0)
+#  define LOG_UNLOCK()							\
+  if(_threads_enabled) \
+  do {									\
+     pthread_t cur;							\
+     cur = pthread_self();						\
+     if (EINA_UNLIKELY(_threads_enabled))				\
+       pthread_spin_unlock(&_log_lock);					\
+     if (0)								\
+       fprintf(stderr,							\
+	       "---LOG LOG_UNLOCKED! [%s, %p]\n",			\
+	       __FUNCTION__, cur.p);					\
+  } while (0)
+#  else
+#   define LOG_LOCK()							\
   if(_threads_enabled) \
   do {									\
      if (0)								\
-       fprintf(stderr, "+++LOG LOG_LOCKED!   [%s, %lu]\n",			\
+       fprintf(stderr, "+++LOG LOG_LOCKED!   [%s, %lu]\n",		\
 	       __FUNCTION__, pthread_self());				\
      if (EINA_UNLIKELY(_threads_enabled))				\
        pthread_spin_lock(&_log_lock);					\
   } while (0)
-#define LOG_UNLOCK()							\
+#  define LOG_UNLOCK()							\
   if(_threads_enabled) \
   do {									\
      if (EINA_UNLIKELY(_threads_enabled))				\
        pthread_spin_unlock(&_log_lock);					\
      if (0)								\
        fprintf(stderr,							\
-	       "---LOG LOG_UNLOCKED! [%s, %lu]\n",				\
+	       "---LOG LOG_UNLOCKED! [%s, %lu]\n",			\
 	       __FUNCTION__, pthread_self());				\
   } while (0)
-#define INIT() pthread_spin_init(&_log_lock, PTHREAD_PROCESS_PRIVATE);
-#define SHUTDOWN() pthread_spin_destroy(&_log_lock);
-#else
+#  endif
+#  define INIT() pthread_spin_init(&_log_lock, PTHREAD_PROCESS_PRIVATE);
+#  define SHUTDOWN() pthread_spin_destroy(&_log_lock);
+
+# else /* ! EFL_HAVE_PTHREAD_SPINLOCK */
+
 static pthread_mutex_t _log_mutex = PTHREAD_MUTEX_INITIALIZER;
-#define LOG_LOCK() if(_threads_enabled) pthread_mutex_lock(&_log_mutex);
-#define LOG_UNLOCK() if(_threads_enabled) pthread_mutex_unlock(&_log_mutex);
-#define INIT() do {} while (0)
-#define SHUTDOWN() do {} while (0)
-#endif
-#else
-#define LOG_LOCK() do {} while (0)
-#define LOG_UNLOCK() do {} while (0)
-#define IS_MAIN(t)  (1)
-#define IS_OTHER(t) (0)
-#define CHECK_MAIN(...) do {} while (0)
-#define INIT() do {} while (0)
-#define SHUTDOWN() do {} while (0)
-#endif
+#  define LOG_LOCK() if(_threads_enabled) pthread_mutex_lock(&_log_mutex);
+#  define LOG_UNLOCK() if(_threads_enabled) pthread_mutex_unlock(&_log_mutex);
+#  define INIT() do {} while (0)
+#  define SHUTDOWN() do {} while (0)
+
+# endif /* ! EFL_HAVE_PTHREAD_SPINLOCK */
+
+#else /* ! EFL_HAVE_PTHREAD */
+
+# define LOG_LOCK() do {} while (0)
+# define LOG_UNLOCK() do {} while (0)
+# define IS_MAIN(t)  (1)
+# define IS_OTHER(t) (0)
+# define CHECK_MAIN(...) do {} while (0)
+# define INIT() do {} while (0)
+# define SHUTDOWN() do {} while (0)
+
+#endif /* ! EFL_HAVE_PTHREAD */
 
 
 // List of domains registered
 static Eina_Log_Domain *_log_domains = NULL;
-static int _log_domains_count = 0;
-static int _log_domains_allocated = 0;
+static unsigned int _log_domains_count = 0;
+static size_t _log_domains_allocated = 0;
 
 // Default function for printing on domains
 static Eina_Log_Print_Cb _print_cb = eina_log_print_cb_stderr;
@@ -433,16 +461,10 @@ static Eina_Log_Level _log_level = EINA_LOG_LEVEL_CRITICAL;
 static Eina_Log_Level _log_level = EINA_LOG_LEVEL_ERR;
 #endif
 
-// Default colors and levels
-static const char *_colors[] = { // + 1 for higher than debug
-  EINA_COLOR_LIGHTRED, // EINA_LOG_LEVEL_CRITICAL
-  EINA_COLOR_RED, // EINA_LOG_LEVEL_ERR
-  EINA_COLOR_YELLOW, // EINA_LOG_LEVEL_WARN
-  EINA_COLOR_GREEN, // EINA_LOG_LEVEL_INFO
-  EINA_COLOR_LIGHTBLUE, // EINA_LOG_LEVEL_DBG
-  EINA_COLOR_BLUE, // Higher than DEBUG
-};
-
+/* NOTE: if you change this, also change:
+ *   eina_log_print_level_name_get()
+ *   eina_log_print_level_name_color_get()
+ */
 static const char *_names[] = {
   "CRI",
   "ERR",
@@ -451,16 +473,87 @@ static const char *_names[] = {
   "DBG",
 };
 
+#ifdef _WIN32
+static int
+eina_log_win32_color_get(const char *domain_str)
+{
+   char *str;
+   char *tmp;
+   char *tmp2;
+   int code = -1;
+   int lighted = 0;
+   int ret = 0;
+
+   str = strdup(domain_str);
+   if (!str)
+     return 0;
+
+   /* this should not append */
+   if (str[0] != '\033')
+     return 0;
+
+   /* we skip the first char and the [ */
+   tmp = tmp2 = str + 2;
+   while (*tmp != 'm')
+     {
+	if (*tmp == ';')
+	  {
+	     *tmp = '\0';
+	     code = atol(tmp2);
+	     tmp++;
+	     tmp2 = tmp;
+	  }
+	tmp++;
+     }
+   *tmp = '\0';
+   if (code < 0)
+     code = atol(tmp2);
+   else
+     lighted = atol(tmp2);
+
+   free(str);
+
+   if (code < lighted)
+     {
+	int c;
+
+	c = code;
+	code = lighted;
+	lighted = c;
+     }
+
+   if (lighted) ret = FOREGROUND_INTENSITY;
+   if (code == 31)
+     ret |= FOREGROUND_RED;
+   else if (code == 32)
+     ret |= FOREGROUND_GREEN;
+   else if (code == 33)
+     ret |= FOREGROUND_RED | FOREGROUND_GREEN;
+   else if (code == 34)
+     ret |= FOREGROUND_BLUE;
+   else if (code == 36)
+     ret |= FOREGROUND_GREEN | FOREGROUND_BLUE;
+   else if (code == 37)
+     ret |= FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE;
+
+   return ret;
+}
+#endif
+
 static inline void
 eina_log_print_level_name_get(int level, const char **p_name)
 {
    static char buf[4];
+   /* NOTE: if you change this, also change
+    *    eina_log_print_level_name_color_get()
+    *    eina_log_level_name_get() (at eina_inline_log.x)
+    */
    if (EINA_UNLIKELY(level < 0))
      {
 	snprintf(buf, sizeof(buf), "%03d", level);
 	*p_name = buf;
      }
-   else if (EINA_UNLIKELY(level > EINA_LOG_LEVELS))
+   else if (EINA_UNLIKELY(level >= EINA_LOG_LEVELS))
      {
 	snprintf(buf, sizeof(buf), "%03d", level);
 	*p_name = buf;
@@ -469,31 +562,63 @@ eina_log_print_level_name_get(int level, const char **p_name)
 	*p_name = _names[level];
 }
 
+#ifdef _WIN32
+static inline void
+eina_log_print_level_name_color_get(int level, const char **p_name, int *p_color)
+{
+   static char buf[4];
+   /* NOTE: if you change this, also change:
+    *   eina_log_print_level_name_get()
+    */
+   if (EINA_UNLIKELY(level < 0))
+     {
+	snprintf(buf, sizeof(buf), "%03d", level);
+	*p_name = buf;
+     }
+   else if (EINA_UNLIKELY(level >= EINA_LOG_LEVELS))
+     {
+	snprintf(buf, sizeof(buf), "%03d", level);
+	*p_name = buf;
+     }
+   else
+     {
+	*p_name = _names[level];
+     }
+
+   *p_color = eina_log_win32_color_get(eina_log_level_color_get(level));
+}
+#else
 static inline void
 eina_log_print_level_name_color_get(int level, const char **p_name, const char **p_color)
 {
    static char buf[4];
+   /* NOTE: if you change this, also change:
+    *   eina_log_print_level_name_get()
+    */
    if (EINA_UNLIKELY(level < 0))
      {
 	snprintf(buf, sizeof(buf), "%03d", level);
 	*p_name = buf;
-	*p_color = _colors[0];
      }
-   else if (EINA_UNLIKELY(level > EINA_LOG_LEVELS))
+   else if (EINA_UNLIKELY(level >= EINA_LOG_LEVELS))
      {
 	snprintf(buf, sizeof(buf), "%03d", level);
 	*p_name = buf;
-	*p_color = _colors[EINA_LOG_LEVELS];
      }
    else
      {
 	*p_name = _names[level];
-	*p_color = _colors[level];
      }
+   *p_color = eina_log_level_color_get(level);
 }
+#endif
 
 #define DECLARE_LEVEL_NAME(level) const char *name; eina_log_print_level_name_get(level, &name)
-#define DECLARE_LEVEL_NAME_COLOR(level) const char *name, *color; eina_log_print_level_name_color_get(level, &name, &color)
+#ifdef _WIN32
+# define DECLARE_LEVEL_NAME_COLOR(level) const char *name; int color; eina_log_print_level_name_color_get(level, &name, &color)
+#else
+# define DECLARE_LEVEL_NAME_COLOR(level) const char *name, *color; eina_log_print_level_name_color_get(level, &name, &color)
+#endif
 
 /** No threads, No color */
 static void
@@ -522,26 +647,77 @@ static void
 eina_log_print_prefix_NOthreads_color_file_func(FILE *fp, const Eina_Log_Domain *d, Eina_Log_Level level, const char *file, const char *fnc, int line)
 {
    DECLARE_LEVEL_NAME_COLOR(level);
+#ifdef _WIN32
+   SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE),
+			   color);
+   fprintf(fp, "%s", name);
+   SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE),
+			   FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
+   fprintf(fp, ":");
+   SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), eina_log_win32_color_get(d->domain_str));
+   fprintf(fp, "%s", d->name);
+   SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE),
+			   FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
+   fprintf(fp, " %s:%d ", file, line);
+   SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE),
+			    FOREGROUND_INTENSITY | FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
+   fprintf(fp, "%s()", fnc);
+   SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE),
+			    FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
+   fprintf(fp, " ");
+#else
    fprintf(fp, "%s%s" EINA_COLOR_RESET ":%s %s:%d "
 	   EINA_COLOR_HIGH "%s()" EINA_COLOR_RESET " ",
 	   color, name, d->domain_str, file, line, fnc);
+#endif
 }
 
 static void
 eina_log_print_prefix_NOthreads_color_NOfile_func(FILE *fp, const Eina_Log_Domain *d, Eina_Log_Level level, const char *file __UNUSED__, const char *fnc, int line __UNUSED__)
 {
    DECLARE_LEVEL_NAME_COLOR(level);
+#ifdef _WIN32
+   SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE),
+			   color);
+   fprintf(fp, "%s", name);
+   SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE),
+			   FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
+   fprintf(fp, ":");
+   SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), eina_log_win32_color_get(d->domain_str));
+   fprintf(fp, "%s", d->name);
+   SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE),
+			    FOREGROUND_INTENSITY | FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
+   fprintf(fp, "%s()", fnc);
+   SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE),
+			    FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
+   fprintf(fp, " ");
+#else
    fprintf(fp, "%s%s" EINA_COLOR_RESET ":%s "
 	   EINA_COLOR_HIGH "%s()" EINA_COLOR_RESET " ",
 	   color, name, d->domain_str, fnc);
+#endif
 }
 
 static void
 eina_log_print_prefix_NOthreads_color_file_NOfunc(FILE *fp, const Eina_Log_Domain *d, Eina_Log_Level level, const char *file, const char *fnc __UNUSED__, int line)
 {
    DECLARE_LEVEL_NAME_COLOR(level);
+#ifdef _WIN32
+   SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE),
+			   color);
+   fprintf(fp, "%s", name);
+   SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE),
+			   FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
+   fprintf(fp, ":");
+   SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), eina_log_win32_color_get(d->domain_str));
+   fprintf(fp, "%s", d->name);
+   SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE),
+			   FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
+   fprintf(fp, " %s:%d ", file, line);
+#else
    fprintf(fp, "%s%s" EINA_COLOR_RESET ":%s %s:%d ",
 	   color, name, d->domain_str, file, line);
+#endif
 }
 
 /** threads, No color */
@@ -549,12 +725,19 @@ eina_log_print_prefix_NOthreads_color_file_NOfunc(FILE *fp, const Eina_Log_Domai
 static void
 eina_log_print_prefix_threads_NOcolor_file_func(FILE *fp, const Eina_Log_Domain *d, Eina_Log_Level level, const char *file, const char *fnc, int line)
 {
+   pthread_t cur;
+
    DECLARE_LEVEL_NAME(level);
-   pthread_t cur = pthread_self();
+   cur = pthread_self();
    if (IS_OTHER(cur))
      {
+#ifdef _WIN32
+	fprintf(fp, "%s:%s[T:%p] %s:%d %s() ",
+		name, d->domain_str, cur.p, file, line, fnc);
+#else
 	fprintf(fp, "%s:%s[T:%lu] %s:%d %s() ",
 		name, d->domain_str, cur, file, line, fnc);
+#endif
 	return;
      }
    fprintf(fp, "%s:%s %s:%d %s() ", name, d->domain_str, file, line, fnc);
@@ -563,12 +746,19 @@ eina_log_print_prefix_threads_NOcolor_file_func(FILE *fp, const Eina_Log_Domain 
 static void
 eina_log_print_prefix_threads_NOcolor_NOfile_func(FILE *fp, const Eina_Log_Domain *d, Eina_Log_Level level, const char *file __UNUSED__, const char *fnc, int line __UNUSED__)
 {
+   pthread_t cur;
+
    DECLARE_LEVEL_NAME(level);
-   pthread_t cur = pthread_self();
+   cur = pthread_self();
    if (IS_OTHER(cur))
      {
+#ifdef _WIN32
+	fprintf(fp, "%s:%s[T:%p] %s() ",
+		name, d->domain_str, cur.p, fnc);
+#else
 	fprintf(fp, "%s:%s[T:%lu] %s() ",
 		name, d->domain_str, cur, fnc);
+#endif
 	return;
      }
    fprintf(fp, "%s:%s %s() ", name, d->domain_str, fnc);
@@ -577,12 +767,19 @@ eina_log_print_prefix_threads_NOcolor_NOfile_func(FILE *fp, const Eina_Log_Domai
 static void
 eina_log_print_prefix_threads_NOcolor_file_NOfunc(FILE *fp, const Eina_Log_Domain *d, Eina_Log_Level level, const char *file, const char *fnc __UNUSED__, int line)
 {
+   pthread_t cur;
+
    DECLARE_LEVEL_NAME(level);
-   pthread_t cur = pthread_self();
+   cur = pthread_self();
    if (IS_OTHER(cur))
      {
+#ifdef _WIN32
+	fprintf(fp, "%s:%s[T:%p] %s:%d ",
+		name, d->domain_str, cur.p, file, line);
+#else
 	fprintf(fp, "%s:%s[T:%lu] %s:%d ",
 		name, d->domain_str, cur, file, line);
+#endif
 	return;
      }
    fprintf(fp, "%s:%s %s:%d ", name, d->domain_str, file, line);
@@ -592,53 +789,140 @@ eina_log_print_prefix_threads_NOcolor_file_NOfunc(FILE *fp, const Eina_Log_Domai
 static void
 eina_log_print_prefix_threads_color_file_func(FILE *fp, const Eina_Log_Domain *d, Eina_Log_Level level, const char *file, const char *fnc, int line)
 {
+   pthread_t cur;
+ 
    DECLARE_LEVEL_NAME_COLOR(level);
-   pthread_t cur = pthread_self();
+   cur = pthread_self();
    if (IS_OTHER(cur))
      {
+# ifdef _WIN32
+	SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE),
+				color);
+	fprintf(fp, "%s", name);
+	SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE),
+				FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
+	fprintf(fp, ":");
+	SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), eina_log_win32_color_get(d->domain_str));
+	fprintf(fp, "%s[T:", d->name);
+	SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE),
+				FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
+	fprintf(fp, "[T:");
+	SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE),
+				FOREGROUND_GREEN | FOREGROUND_BLUE);
+	fprintf(fp, "%lu", (unsigned long)cur.p);
+	SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE),
+				FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
+	fprintf(fp, "] %s:%d ", file, line);
+	SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE),
+				FOREGROUND_INTENSITY | FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
+	fprintf(fp, "%s()", fnc);
+	SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE),
+				FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
+	fprintf(fp, " ");
+# else
 	fprintf(fp, "%s%s" EINA_COLOR_RESET ":%s[T:"
 		EINA_COLOR_ORANGE "%lu" EINA_COLOR_RESET "] %s:%d "
 		EINA_COLOR_HIGH "%s()" EINA_COLOR_RESET " ",
 		color, name, d->domain_str, cur, file, line, fnc);
+# endif
 	return;
      }
+# ifdef _WIN32
+   eina_log_print_prefix_NOthreads_color_file_func(fp, d, level, file, fnc, line);
+# else
    fprintf(fp, "%s%s" EINA_COLOR_RESET ":%s %s:%d "
 	   EINA_COLOR_HIGH "%s()" EINA_COLOR_RESET " ",
 	   color, name, d->domain_str, file, line, fnc);
+# endif
 }
 
 static void
 eina_log_print_prefix_threads_color_NOfile_func(FILE *fp, const Eina_Log_Domain *d, Eina_Log_Level level, const char *file __UNUSED__, const char *fnc, int line __UNUSED__)
 {
+   pthread_t cur;
+
    DECLARE_LEVEL_NAME_COLOR(level);
-   pthread_t cur = pthread_self();
+   cur = pthread_self();
    if (IS_OTHER(cur))
      {
+# ifdef _WIN32
+	SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE),
+				color);
+	fprintf(fp, "%s", name);
+	SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE),
+				FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
+	fprintf(fp, ":");
+	SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), eina_log_win32_color_get(d->domain_str));
+	fprintf(fp, "%s[T:", d->name);
+	SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE),
+				FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
+	fprintf(fp, "[T:");
+	SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE),
+				FOREGROUND_GREEN | FOREGROUND_BLUE);
+	fprintf(fp, "%lu", (unsigned long)cur.p);
+	SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE),
+				FOREGROUND_INTENSITY | FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
+	fprintf(fp, "%s()", fnc);
+	SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE),
+				FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
+	fprintf(fp, " ");
+# else
 	fprintf(fp, "%s%s" EINA_COLOR_RESET ":%s[T:"
 		EINA_COLOR_ORANGE "%lu" EINA_COLOR_RESET "] "
 		EINA_COLOR_HIGH "%s()" EINA_COLOR_RESET " ",
 		color, name, d->domain_str, cur, fnc);
+# endif
 	return;
      }
+# ifdef _WIN32
+   eina_log_print_prefix_NOthreads_color_NOfile_func(fp, d, level, file, fnc, line);
+# else
    fprintf(fp, "%s%s" EINA_COLOR_RESET ":%s "
 	   EINA_COLOR_HIGH "%s()" EINA_COLOR_RESET " ",
 	   color, name, d->domain_str, fnc);
+# endif
 }
 
 static void
 eina_log_print_prefix_threads_color_file_NOfunc(FILE *fp, const Eina_Log_Domain *d, Eina_Log_Level level, const char *file, const char *fnc __UNUSED__, int line)
 {
+   pthread_t cur;
+
    DECLARE_LEVEL_NAME_COLOR(level);
-   pthread_t cur = pthread_self();
+   cur = pthread_self();
    if (IS_OTHER(cur))
      {
+# ifdef _WIN32
+	SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE),
+				color);
+	fprintf(fp, "%s", name);
+	SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE),
+				FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
+	fprintf(fp, ":");
+	SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), eina_log_win32_color_get(d->domain_str));
+	fprintf(fp, "%s[T:", d->name);
+	SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE),
+				FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
+	fprintf(fp, "[T:");
+	SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE),
+				FOREGROUND_GREEN | FOREGROUND_BLUE);
+	fprintf(fp, "%lu", (unsigned long)cur.p);
+	SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE),
+				FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
+	fprintf(fp, "] %s:%d ", file, line);
+# else
 	fprintf(fp, "%s%s" EINA_COLOR_RESET ":%s[T:"
 		EINA_COLOR_ORANGE "%lu" EINA_COLOR_RESET "] %s:%d ",
 		color, name, d->domain_str, cur, file, line);
+# endif
 	return;
      }
+# ifdef _WIN32
+   eina_log_print_prefix_NOthreads_color_file_NOfunc(fp, d, level, file, fnc, line);
+# else
    fprintf(fp, "%s%s" EINA_COLOR_RESET ":%s %s:%d ",
 	   color, name, d->domain_str, file, line);
+# endif
 }
 #endif
 
@@ -753,11 +1037,13 @@ eina_log_domain_new(Eina_Log_Domain *d, const char *name, const char *color)
 	   d->domain_str = eina_log_domain_str_get(name, NULL);
 
 	d->name = strdup(name);
+	d->namelen = strlen(name);
      }
    else
      {
 	d->domain_str = NULL;
 	d->name = NULL;
+	d->namelen = 0;
      }
 
    return d;
@@ -806,6 +1092,7 @@ eina_log_domain_parse_pendings(void)
 	// Parse name
 	p = malloc(sizeof(Eina_Log_Domain_Level_Pending) + end - start + 1);
 	if (!p) break;
+	p->namelen = end - start;
 	memcpy((char *)p->name, start, end - start);
 	((char *)p->name)[end - start] = '\0';
 	p->level = level;
@@ -844,6 +1131,7 @@ eina_log_domain_parse_pending_globs(void)
 	// Parse name
 	p = malloc(sizeof(Eina_Log_Domain_Level_Pending) + end - start + 1);
 	if (!p) break;
+	p->namelen = 0; /* not that useful */
 	memcpy((char *)p->name, start, end - start);
 	((char *)p->name)[end - start] = '\0';
 	p->level = level;
@@ -857,6 +1145,122 @@ eina_log_domain_parse_pending_globs(void)
      }
 }
 
+static inline int
+eina_log_domain_register_unlocked(const char *name, const char *color)
+{
+   Eina_Log_Domain_Level_Pending *pending = NULL;
+   size_t namelen;
+   unsigned int i;
+
+   for (i = 0; i < _log_domains_count; i++)
+     {
+	if (_log_domains[i].deleted)
+	  {
+	     // Found a flagged slot, free domain_str and replace slot
+	     eina_log_domain_new(&_log_domains[i], name, color);
+	     goto finish_register;
+	  }
+     }
+
+   if (_log_domains_count >= _log_domains_allocated)
+     {
+	Eina_Log_Domain *tmp;
+	size_t size;
+
+	if (!_log_domains)
+	  // special case for init, eina itself will allocate a dozen of domains
+	  size = 24;
+	else
+	  // grow 8 buckets to minimize reallocs
+	  size = _log_domains_allocated + 8;
+
+	tmp = realloc(_log_domains, sizeof(Eina_Log_Domain) * size);
+
+	if (tmp)
+	  {
+	     // Success!
+	     _log_domains = tmp;
+	     _log_domains_allocated = size;
+	  }
+	else
+	   return -1;
+     }
+
+   // Use an allocated slot
+   eina_log_domain_new(&_log_domains[i], name, color);
+   _log_domains_count++;
+
+finish_register:
+   namelen = _log_domains[i].namelen;
+
+   EINA_INLIST_FOREACH(_pending_list, pending)
+     {
+	if ((namelen == pending->namelen) && (strcmp(pending->name, name) == 0))
+	  {
+	     _log_domains[i].level = pending->level;
+	     _pending_list = eina_inlist_remove(_pending_list, EINA_INLIST_GET(pending));
+	     free(pending);
+	     break;
+	  }
+     }
+
+   if (_log_domains[i].level == EINA_LOG_LEVEL_UNKNOWN)
+     {
+	EINA_INLIST_FOREACH(_glob_list, pending)
+	  {
+	     if (!fnmatch(pending->name, name, 0))
+	       {
+		  _log_domains[i].level = pending->level;
+		  break;
+	       }
+	  }
+     }
+
+   // Check if level is still UNKNOWN, set it to global
+   if (_log_domains[i].level == EINA_LOG_LEVEL_UNKNOWN)
+      _log_domains[i].level = _log_level;
+
+   return i;
+}
+
+static inline Eina_Bool
+eina_log_term_color_supported(const char *term)
+{
+   const char *tail;
+
+   if (!term)
+     return EINA_FALSE;
+
+   tail = term + 1;
+   switch (term[0])
+     {
+	/* list of known to support color terminals,
+	 * take from gentoo's portage.
+	 */
+
+      case 'x': /* xterm and xterm-color */
+	 return ((strncmp(tail, "term", sizeof("term") - 1) == 0) &&
+		 ((tail[sizeof("term") - 1] == '\0') ||
+		  (strcmp(tail + sizeof("term") - 1, "-color") == 0)));
+      case 'E': /* Eterm */
+      case 'a': /* aterm */
+      case 'k': /* kterm */
+	return (strcmp(tail, "term") == 0);
+      case 'r': /* xrvt or rxvt-unicode */
+	 return ((strncmp(tail, "xvt", sizeof("xvt") - 1) == 0) &&
+		 ((tail[sizeof("xvt") - 1] == '\0') ||
+		  (strcmp(tail + sizeof("xvt") - 1, "-unicode") == 0)));
+      case 's': /* screen */
+	 return (strcmp(tail, "creen") == 0);
+      case 'g': /* gnome */
+	 return (strcmp(tail, "nome") == 0);
+      case 'i': /* interix */
+	 return (strcmp(tail, "nterix") == 0);
+      default:
+	 return EINA_FALSE;
+     }
+}
+
 /**
  * @endcond
  */
@@ -865,85 +1269,6 @@ eina_log_domain_parse_pending_globs(void)
 /*============================================================================*
  *                                 Global                                     *
  *============================================================================*/
-
-/*============================================================================*
- *                                   API                                      *
- *============================================================================*/
-
-/**
- * @addtogroup Eina_Log_Group log
- *
- * @brief These functions provide log management for projects.
- *
- * To use the log system Eina must be initialized with eina_init() and
- * later shut down with eina_shutdown(). The most generic way to print
- * logs is to use eina_log_print() but the helper macros
- * EINA_LOG_ERR(), EINA_LOG_INFO(), EINA_LOG_WARN() and EINA_LOG_DBG()
- * should be used instead.
- *
- * Here is a straightforward example:
- *
- * @code
- * #include <stdlib.h>
- * #include <stdio.h>
- *
- * #include <eina_log.h>
- *
- * void test_warn(void)
- * {
- *    EINA_LOG_WARN("Here is a warning message");
- * }
- *
- * int main(void)
- * {
- *    if (!eina_init())
- *    {
- *        printf("log during the initialization of Eina_Log module\n");
- *        return EXIT_FAILURE;
- *    }
- *
- *    test_warn();
- *
- *    eina_shutdown();
- *
- *    return EXIT_SUCCESS;
- * }
- * @endcode
- *
- * Compile this code with the following command:
- *
- * @code
- * gcc -Wall -o test_Eina_Log test_eina.c `pkg-config --cflags --libs eina`
- * @endcode
- *
- * If Eina is compiled without debug mode, then executing the
- * resulting program displays nothing because the default log level
- * is #EINA_LOG_LEVEL_ERR and we want to display a warning
- * message, which level is strictly greater than the log level (see
- * eina_log_print() for more informations). Now execute the program
- * with:
- *
- * @code
- * EINA_LOG_LEVEL=2 ./test_eina_log
- * @endcode
- *
- * You should see a message displayed in the terminal.
- *
- * For more information, you can look at the @ref tutorial_log_page.
- *
- * @{
- */
-
-
-/**
- * @cond LOCAL
- */
-
-EAPI int EINA_LOG_DOMAIN_GLOBAL = 0;
-
-/**
- * @endcond
- */
 
 /**
  * @internal
@@ -964,13 +1289,41 @@ Eina_Bool
 eina_log_init(void)
 {
    const char *level, *tmp;
+   int color_disable;
 
    assert((sizeof(_names)/sizeof(_names[0])) == EINA_LOG_LEVELS);
-   assert((sizeof(_colors)/sizeof(_colors[0])) == EINA_LOG_LEVELS + 1);
 
-   // Check if color is disabled
-   if ((tmp = getenv(EINA_LOG_ENV_COLOR_DISABLE)) && (atoi(tmp) == 1))
+   if ((tmp = getenv(EINA_LOG_ENV_COLOR_DISABLE)))
+     color_disable = atoi(tmp);
+   else
+     color_disable = -1;
+
+   /* Check if color is explicitly disabled */
+   if (color_disable == 1)
      _disable_color = EINA_TRUE;
+
+#ifndef _WIN32
+   /* color was not explicitly disabled or enabled, guess it */
+   else if (color_disable == -1)
+     {
+	if (!eina_log_term_color_supported(getenv("TERM")))
+	  _disable_color = EINA_TRUE;
+	else {
+	   /* if not a terminal, but redirected to a file, disable color */
+	   int fd;
+
+	   if (_print_cb == eina_log_print_cb_stderr)
+	     fd = STDERR_FILENO;
+	   else if (_print_cb == eina_log_print_cb_stdout)
+	     fd = STDOUT_FILENO;
+	   else
+	     fd = -1;
+
+	   if ((fd >= 0) && (!isatty(fd)))
+	     _disable_color = EINA_TRUE;
+	}
+     }
+#endif
 
    if ((tmp = getenv(EINA_LOG_ENV_FILE_DISABLE)) && (atoi(tmp) == 1))
      _disable_file = EINA_TRUE;
@@ -1041,7 +1394,7 @@ eina_log_shutdown(void)
    _log_domains_count = 0;
    _log_domains_allocated = 0;
 
-   while (_glob_list) 
+   while (_glob_list)
      {
         tmp = _glob_list;
         _glob_list = _glob_list->next;
@@ -1058,7 +1411,6 @@ eina_log_shutdown(void)
    return EINA_TRUE;
 }
 
-
 #ifdef EFL_HAVE_PTHREAD
 
 /**
@@ -1070,7 +1422,7 @@ eina_log_shutdown(void)
  *
  * @see eina_thread_init()
  */
-void 
+void
 eina_log_threads_init(void)
 {
    _main_thread = pthread_self();
@@ -1082,7 +1434,7 @@ eina_log_threads_init(void)
  * @internal
  * @brief Shut down the log mutex.
  *
- * This function shuts down the mutex in the log module. 
+ * This function shuts down the mutex in the log module.
  * It is called by eina_thread_shutdown().
  *
  * @see eina_thread_shutdown()
@@ -1096,6 +1448,110 @@ eina_log_threads_shutdown(void)
 }
 
 #endif
+
+/*============================================================================*
+ *                                   API                                      *
+ *============================================================================*/
+
+/**
+ * @addtogroup Eina_Log_Group Log
+ *
+ * @brief Full-featured logging system.
+ *
+ * Eina provides eina_log_print(), a standard function to manage all
+ * logging messages. This function may be called directly or using the
+ * helper macros such as EINA_LOG_DBG(), EINA_LOG_ERR() or those that
+ * take a specific domain as argument EINA_LOG_DOM_DBG(),
+ * EINA_LOG_DOM_ERR().  Internally, eina_log_print() will call the
+ * function defined with eina_log_print_cb_set(), that defaults to
+ * eina_log_print_cb_stderr(), but may be changed to do whatever you
+ * need, such as networking or syslog logging.
+ *
+ * The logging system is thread safe once initialized with
+ * eina_log_threads_enable(). The thread that calls this function
+ * first is considered "main thread" and other threads will have their
+ * thread id (pthread_self()) printed in the log message so it is easy
+ * to detect from where it is coming.
+ *
+ * Log domains is the Eina way to differentiate messages. There might
+ * be different domains to represent different modules, different
+ * feature-set, different categories and so on. Filtering can be
+ * applied to domain names by means of @c EINA_LOG_LEVELS environment
+ * variable or eina_log_domain_level_set().
+ *
+ * The different logging levels serve to customize the amount of
+ * debugging one want to take and may be used to automatically call
+ * abort() once some given level message is printed. This is
+ * controlled by environment variable @c EINA_LOG_ABORT and the level
+ * to be considered critical with @c EINA_LOG_ABORT_LEVEL. These can
+ * be changed with eina_log_abort_on_critical_set() and
+ * eina_log_abort_on_critical_level_set().
+ *
+ * The default maximum level to print is defined by environment
+ * variable @c EINA_LOG_LEVEL, but may be set per-domain with @c
+ * EINA_LOG_LEVELS. It will default to #EINA_LOG_ERR. This can be
+ * changed with eina_log_level_set().
+ *
+ * To use the log system Eina must be initialized with eina_init() and
+ * later shut down with eina_shutdown(). Here is a straightforward
+ * example:
+ *
+ * @code
+ * #include <stdlib.h>
+ * #include <stdio.h>
+ *
+ * #include <eina_log.h>
+ *
+ * void test_warn(void)
+ * {
+ *    EINA_LOG_WARN("Here is a warning message");
+ * }
+ *
+ * int main(void)
+ * {
+ *    if (!eina_init())
+ *    {
+ *        printf("log during the initialization of Eina_Log module\n");
+ *        return EXIT_FAILURE;
+ *    }
+ *
+ *    test_warn();
+ *
+ *    eina_shutdown();
+ *
+ *    return EXIT_SUCCESS;
+ * }
+ * @endcode
+ *
+ * Compile this code with the following command:
+ *
+ * @code
+ * gcc -Wall -o test_Eina_Log test_eina.c `pkg-config --cflags --libs eina`
+ * @endcode
+ *
+ * Now execute the program with:
+ *
+ * @code
+ * EINA_LOG_LEVEL=2 ./test_eina_log
+ * @endcode
+ *
+ * You should see a message displayed in the terminal.
+ *
+ * For more information, you can look at the @ref tutorial_log_page.
+ *
+ * @{
+ */
+
+
+/**
+ * @cond LOCAL
+ */
+
+EAPI int EINA_LOG_DOMAIN_GLOBAL = 0;
+
+/**
+ * @endcond
+ */
 
 
 /**
@@ -1146,89 +1602,214 @@ eina_log_print_cb_set(Eina_Log_Print_Cb cb, void *data)
 }
 
 /**
- * @brief Set the default log log level.
+ * @brief Set the default log level.
  *
  * @param level The log level.
  *
- * This function sets the log log level @p level. It is used in
+ * This function sets the log level @p level. It is used in
  * eina_log_print().
+ *
+ * @note this is initially set to envvar EINA_LOG_LEVEL by eina_init().
+ *
+ * @see eina_log_level_get()
  */
 EAPI void
-eina_log_level_set(Eina_Log_Level level)
+eina_log_level_set(int level)
 {
    _log_level = level;
+   if (EINA_LIKELY((EINA_LOG_DOMAIN_GLOBAL >= 0) &&
+		   ((unsigned int)EINA_LOG_DOMAIN_GLOBAL < _log_domains_count)))
+     _log_domains[EINA_LOG_DOMAIN_GLOBAL].level = level;
 }
 
-static inline int
-eina_log_domain_register_unlocked(const char *name, const char *color)
+/**
+ * @brief Get the default log level.
+ *
+ * @return the log level that limits eina_log_print().
+ *
+ * @see eina_log_level_set()
+ */
+EAPI int
+eina_log_level_get(void)
 {
-   Eina_Log_Domain_Level_Pending *pending = NULL;
-   int i;
+   return _log_level;
+}
 
-   for (i = 0; i < _log_domains_count; i++)
-     {
-	if (_log_domains[i].deleted)
-	  {
-	     // Found a flagged slot, free domain_str and replace slot
-	     eina_log_domain_new(&_log_domains[i], name, color);
-	     goto finish_register;
-	  }
-     }
+/**
+ * Checks if current thread is the main thread.
+ *
+ * @return #EINA_TRUE if threads were enabled and the current thread
+ *         is the one that called eina_log_threads_init(). If there is
+ *         no thread support (compiled with --disable-pthreads) or
+ *         they were not enabled, then #EINA_TRUE is also
+ *         returned. The only case where #EINA_FALSE is returned is
+ *         when threads were successfully enabled but the current
+ *         thread is not the main (one that called
+ *         eina_log_threads_init()).
+ */
+EAPI Eina_Bool
+eina_log_main_thread_check(void)
+{
+#ifdef EFL_HAVE_PTHREAD
+   return ((!_threads_enabled) || pthread_equal(_main_thread, pthread_self()));
+#else
+   return EINA_TRUE;
+#endif
+}
 
-   if (_log_domains_count >= _log_domains_allocated)
-     {
-	Eina_Log_Domain *tmp;
-	size_t size;
+/**
+ * @brief Set if color logging should be disabled.
+ *
+ * @param disabled if #EINA_TRUE, color logging should be disabled.
+ *
+ * @note this is initially set to envvar EINA_LOG_COLOR_DISABLE by eina_init().
+ *
+ * @see eina_log_color_disable_get()
+ */
+EAPI void
+eina_log_color_disable_set(Eina_Bool disabled)
+{
+   _disable_color = disabled;
+}
 
-	if (!_log_domains)
-	  // special case for init, eina itself will allocate a dozen of domains
-	  size = 24;
-	else
-	  // grow 8 buckets to minimize reallocs
-	  size = _log_domains_allocated + 8;
+/**
+ * @brief Get if color logging should be disabled.
+ *
+ * @return if #EINA_TRUE, color logging should be disabled.
+ *
+ * @see eina_log_color_disable_set()
+ */
+EAPI Eina_Bool
+eina_log_color_disable_get(void)
+{
+   return _disable_color;
+}
 
-	tmp = realloc(_log_domains, sizeof(Eina_Log_Domain) * size);
+/**
+ * @brief Set if originating file name logging should be disabled.
+ *
+ * @param disabled if #EINA_TRUE, file name logging should be disabled.
+ *
+ * @note this is initially set to envvar EINA_LOG_FILE_DISABLE by eina_init().
+ *
+ * @see eina_log_file_disable_get()
+ */
+EAPI void
+eina_log_file_disable_set(Eina_Bool disabled)
+{
+   _disable_file = disabled;
+}
 
-	if (tmp)
-	  {
-	     // Success!
-	     _log_domains = tmp;
-	     _log_domains_allocated = size;
-	  }
-	else
-	   return -1;
-     }
+/**
+ * @brief Get if originating file name logging should be disabled.
+ *
+ * @return if #EINA_TRUE, file name logging should be disabled.
+ *
+ * @see eina_log_file_disable_set()
+ */
+EAPI Eina_Bool
+eina_log_file_disable_get(void)
+{
+   return _disable_file;
+}
 
-   // Use an allocated slot
-   eina_log_domain_new(&_log_domains[i], name, color);
-   _log_domains_count++;
+/**
+ * @brief Set if originating function name logging should be disabled.
+ *
+ * @param disabled if #EINA_TRUE, function name logging should be disabled.
+ *
+ * @note this is initially set to envvar EINA_LOG_FUNCTION_DISABLE by
+ *       eina_init().
+ *
+ * @see eina_log_function_disable_get()
+ */
+EAPI void
+eina_log_function_disable_set(Eina_Bool disabled)
+{
+   _disable_function = disabled;
+}
 
-finish_register:
-   EINA_INLIST_FOREACH(_glob_list, pending) 
-     {
-        if (!fnmatch(pending->name, name, 0)) 
-          {
-             _log_domains[i].level = pending->level;
-             break;
-          }
-     }
+/**
+ * @brief Get if originating function name logging should be disabled.
+ *
+ * @return if #EINA_TRUE, function name logging should be disabled.
+ *
+ * @see eina_log_function_disable_set()
+ */
+EAPI Eina_Bool
+eina_log_function_disable_get(void)
+{
+   return _disable_function;
+}
 
-   EINA_INLIST_FOREACH(_pending_list, pending)
-     {
-	if (!strcmp(pending->name, name))
-	  {
-	     _log_domains[i].level = pending->level;
-	     _pending_list = eina_inlist_remove(_pending_list, EINA_INLIST_GET(pending));
-	     free(pending);
-	     break;
-	  }
-     }
+/**
+ * @brief Set if critical messages should abort the program.
+ *
+ * @param abort_on_critical if #EINA_TRUE, messages with level equal
+ *        or smaller than eina_log_abort_on_critical_level_get() will
+ *        abort the program.
+ *
+ * @note this is initially set to envvar EINA_LOG_ABORT by
+ *       eina_init().
+ *
+ * @see eina_log_abort_on_critical_get()
+ * @see eina_log_abort_on_critical_level_set()
+ */
+EAPI void
+eina_log_abort_on_critical_set(Eina_Bool abort_on_critical)
+{
+   _abort_on_critical = abort_on_critical;
+}
 
-   // Check if level is still UNKNOWN, set it to global
-   if (_log_domains[i].level == EINA_LOG_LEVEL_UNKNOWN)
-      _log_domains[i].level = _log_level;
+/**
+ * @brief Get if critical messages should abort the program.
+ *
+ * @return if #EINA_TRUE, any messages with level equal or smaller
+ *         than eina_log_abort_on_critical_level_get() will abort the
+ *         program.
+ *
+ * @see eina_log_abort_on_critical_set()
+ * @see eina_log_abort_on_critical_level_set()
+ */
+EAPI Eina_Bool
+eina_log_abort_on_critical_get(void)
+{
+   return _abort_on_critical;
+}
 
-   return i;
+/**
+ * @brief Set level that triggers abort if abort-on-critical is set.
+ *
+ * @param critical_level levels equal or smaller than the given value
+ *        will trigger program abortion if
+ *        eina_log_abort_on_critical_get() returns #EINA_TRUE.
+ *
+ * @note this is initially set to envvar EINA_LOG_ABORT_LEVEL by
+ *       eina_init().
+ *
+ * @see eina_log_abort_on_critical_level_get()
+ * @see eina_log_abort_on_critical_get()
+ */
+EAPI void
+eina_log_abort_on_critical_level_set(int critical_level)
+{
+   _abort_level_on_critical = critical_level;
+}
+
+/**
+ * @brief Get level that triggers abort if abort-on-critical is set.
+ *
+ * @return critical level equal or smaller than value will trigger
+ *        program abortion if eina_log_abort_on_critical_get() returns
+ *        #EINA_TRUE.
+ *
+ * @see eina_log_abort_on_critical_level_set()
+ * @see eina_log_abort_on_critical_get()
+ */
+EAPI int
+eina_log_abort_on_critical_level_get(void)
+{
+   return _abort_level_on_critical;
 }
 
 /**
@@ -1259,7 +1840,7 @@ eina_log_domain_unregister_unlocked(int domain)
 {
    Eina_Log_Domain *d;
 
-   if (domain >= _log_domains_count) return;
+   if ((unsigned int)domain >= _log_domains_count) return;
 
    d = &_log_domains[domain];
    eina_log_domain_free(d);
@@ -1284,11 +1865,156 @@ eina_log_domain_unregister(int domain)
 }
 
 /**
+ * Set the domain level given its name.
+ *
+ * This call has the same effect as setting
+ * EINA_LOG_LEVELS=<domain_name>:<level>
+ *
+ * @param domain_name domain name to change the level. It may be of a
+ *        still not registered domain. If the domain is not registered
+ *        yet, it will be saved as a pending set and applied upon
+ *        registration.
+ * @param level level to use to limit eina_log_print() for given domain.
+ */
+EAPI void
+eina_log_domain_level_set(const char *domain_name, int level)
+{
+   Eina_Log_Domain_Level_Pending *pending;
+   size_t namelen;
+   unsigned int i;
+
+   EINA_SAFETY_ON_NULL_RETURN(domain_name);
+
+   namelen = strlen(domain_name);
+
+   for (i = 0; i < _log_domains_count; i++)
+     {
+	if (_log_domains[i].deleted)
+	  continue;
+	if ((namelen != _log_domains[i].namelen) ||
+	    (strcmp(_log_domains[i].name, domain_name) != 0))
+	  continue;
+
+	_log_domains[i].level = level;
+	return;
+     }
+
+   EINA_INLIST_FOREACH(_pending_list, pending)
+     {
+	if ((namelen == pending->namelen) &&
+	    (strcmp(pending->name, domain_name) == 0))
+	  {
+	     pending->level = level;
+	     return;
+	  }
+     }
+
+   pending = malloc(sizeof(Eina_Log_Domain_Level_Pending) + namelen + 1);
+   if (!pending)
+     return;
+   pending->level = level;
+   pending->namelen = namelen;
+   memcpy(pending->name, domain_name, namelen + 1);
+
+   _pending_list = eina_inlist_append(_pending_list, EINA_INLIST_GET(pending));
+}
+
+/**
+ * Get the domain level given its name.
+ *
+ * @param domain_name domain name to retrieve the level. It may be of
+ *        a still not registered domain. If the domain is not
+ *        registered yet, but there is a pending value, either from
+ *        eina_log_domain_level_set(),EINA_LOG_LEVELS environment
+ *        variable or from EINA_LOG_LEVELS_GLOB, these are
+ *        returned. If nothing else was found, then the global/default
+ *        level (eina_log_level_get()) is returned.
+ *
+ * @return level to use to limit eina_log_print() for given
+ *         domain. On error (@p domain_name == NULL),
+ *         EINA_LOG_LEVEL_UNKNOWN is returned.
+ *
+ * @see eina_log_domain_level_set()
+ * @see eina_log_domain_registered_level_get()
+ */
+EAPI int
+eina_log_domain_level_get(const char *domain_name)
+{
+   Eina_Log_Domain_Level_Pending *pending;
+   size_t namelen;
+   unsigned int i;
+
+   EINA_SAFETY_ON_NULL_RETURN_VAL(domain_name, EINA_LOG_LEVEL_UNKNOWN);
+
+   namelen = strlen(domain_name);
+
+   for (i = 0; i < _log_domains_count; i++)
+     {
+	if (_log_domains[i].deleted)
+	  continue;
+	if ((namelen != _log_domains[i].namelen) ||
+	    (strcmp(_log_domains[i].name, domain_name) != 0))
+	  continue;
+
+	return _log_domains[i].level;
+     }
+
+   EINA_INLIST_FOREACH(_pending_list, pending)
+     {
+	if ((namelen == pending->namelen) &&
+	    (strcmp(pending->name, domain_name) == 0))
+	  {
+	     return pending->level;
+	  }
+     }
+
+   EINA_INLIST_FOREACH(_glob_list, pending)
+     {
+	if (!fnmatch(pending->name, domain_name, 0))
+	  {
+	     return pending->level;
+	  }
+     }
+
+   return _log_level;
+}
+
+/**
+ * Get the domain level given its identifier.
+ *
+ * @param domain identifier, so it must be previously registered with
+ *        eina_log_domain_register(). It's a much faster version of
+ *        eina_log_domain_level_get(), but relies on domain being
+ *        present.
+ *
+ * @return level to use to limit eina_log_print() for given domain. On
+ *         error EINA_LOG_LEVEL_UNKNOWN is returned.
+ */
+EAPI int
+eina_log_domain_registered_level_get(int domain)
+{
+   EINA_SAFETY_ON_FALSE_RETURN_VAL(domain >= 0, EINA_LOG_LEVEL_UNKNOWN);
+   EINA_SAFETY_ON_FALSE_RETURN_VAL((unsigned int)domain < _log_domains_count,
+				   EINA_LOG_LEVEL_UNKNOWN);
+   EINA_SAFETY_ON_TRUE_RETURN_VAL(_log_domains[domain].deleted,
+				  EINA_LOG_LEVEL_UNKNOWN);
+   return _log_domains[domain].level;
+}
+
+/**
  * Default logging method, this will output to standard error stream.
  *
  * This method will colorize output based on domain provided color and
- * message logging level. To disable color, set environment variable
- * EINA_LOG_COLOR_DISABLE=1. Similarly, to disable file and line
+ * message logging level.
+ *
+ * To disable color, set environment variable
+ * EINA_LOG_COLOR_DISABLE=1. To enable color, even if directing to a
+ * file or when using a non-supported color terminal, use
+ * EINA_LOG_COLOR_DISABLE=0. If EINA_LOG_COLOR_DISABLE is unset (or
+ * -1), then Eina will disable color if terminal ($TERM) is
+ * unsupported or if redirecting to a file.
+
+. Similarly, to disable file and line
  * information, set EINA_LOG_FILE_DISABLE=1 or
  * EINA_LOG_FUNCTION_DISABLE=1 to avoid function name in output. It is
  * not acceptable to have both EINA_LOG_FILE_DISABLE and
@@ -1358,13 +2084,19 @@ eina_log_print_cb_file(const Eina_Log_Domain *d, __UNUSED__ Eina_Log_Level level
 	pthread_t cur = pthread_self();
 	if (IS_OTHER(cur))
 	  {
+# ifdef _WIN32
+	     fprintf(f, "%s[T:%p] %s:%d %s() ", d->name, cur.p, file, line, fnc);
+# else
 	     fprintf(f, "%s[T:%lu] %s:%d %s() ", d->name, cur, file, line, fnc);
+# endif
 	     goto end;
 	  }
      }
 #endif
    fprintf(f, "%s %s:%d %s() ", d->name, file, line, fnc);
+#ifdef EFL_HAVE_PTHREAD
  end:
+#endif
    vfprintf(f, fmt, args);
    putc('\n', f);
 }
@@ -1375,7 +2107,7 @@ eina_log_print_unlocked(int domain, Eina_Log_Level level, const char *file, cons
    Eina_Log_Domain *d;
 
 #ifdef EINA_SAFETY_CHECKS
-   if (EINA_UNLIKELY(domain >= _log_domains_count) ||
+   if (EINA_UNLIKELY((unsigned int)domain >= _log_domains_count) ||
        EINA_UNLIKELY(domain < 0))
      {
 	if (file && fnc && fmt)
@@ -1506,3 +2238,6 @@ eina_log_vprint(int domain, Eina_Log_Level level, const char *file,
    LOG_UNLOCK();
 }
 
+/**
+ * @}
+ */

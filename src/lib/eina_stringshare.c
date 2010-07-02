@@ -70,6 +70,10 @@
 #include <stdio.h>
 #include <string.h>
 
+#ifdef EFL_HAVE_PTHREAD
+# include <pthread.h>
+#endif
+
 #ifdef HAVE_EVIL
 # include <Evil.h>
 #endif
@@ -108,7 +112,7 @@ static const char EINA_MAGIC_STRINGSHARE_NODE_STR[] = "Eina Stringshare Node";
         unlock;							\
         return __VA_ARGS__;					\
     }								\
-  } while (0);
+  } while (0)
 
 #define EINA_MAGIC_CHECK_STRINGSHARE_NODE(d, unlock)		\
   do {								\
@@ -117,7 +121,7 @@ static const char EINA_MAGIC_STRINGSHARE_NODE_STR[] = "Eina Stringshare Node";
       unlock;							\
       EINA_MAGIC_FAIL((d), EINA_MAGIC_STRINGSHARE_NODE);	\
     }								\
-  } while (0);
+  } while (0)
 
 typedef struct _Eina_Stringshare             Eina_Stringshare;
 typedef struct _Eina_Stringshare_Node        Eina_Stringshare_Node;
@@ -136,8 +140,8 @@ struct _Eina_Stringshare_Node
 
    EINA_MAGIC
 
-   unsigned short         length;
-   unsigned short         references;
+   unsigned int           length;
+   unsigned int           references;
    char                   str[];
 };
 
@@ -177,16 +181,15 @@ static int _eina_stringshare_log_dom = -1;
 
 
 #ifdef EFL_HAVE_PTHREAD
-#include <pthread.h>
 static Eina_Bool _stringshare_threads_activated = EINA_FALSE;
 //string < 4
 static pthread_mutex_t _mutex_small = PTHREAD_MUTEX_INITIALIZER;
 //string >= 4
 static pthread_mutex_t _mutex_big = PTHREAD_MUTEX_INITIALIZER;
-#define STRINGSHARE_LOCK_SMALL() if(_stringshare_threads_activated) pthread_mutex_lock(&_mutex_small);
-#define STRINGSHARE_UNLOCK_SMALL() if(_stringshare_threads_activated) pthread_mutex_unlock(&_mutex_small);
-#define STRINGSHARE_LOCK_BIG() if(_stringshare_threads_activated) pthread_mutex_lock(&_mutex_big);
-#define STRINGSHARE_UNLOCK_BIG() if(_stringshare_threads_activated) pthread_mutex_unlock(&_mutex_big);
+#define STRINGSHARE_LOCK_SMALL() if(_stringshare_threads_activated) pthread_mutex_lock(&_mutex_small)
+#define STRINGSHARE_UNLOCK_SMALL() if(_stringshare_threads_activated) pthread_mutex_unlock(&_mutex_small)
+#define STRINGSHARE_LOCK_BIG() if(_stringshare_threads_activated) pthread_mutex_lock(&_mutex_big)
+#define STRINGSHARE_UNLOCK_BIG() if(_stringshare_threads_activated) pthread_mutex_unlock(&_mutex_big)
 #else
 #define STRINGSHARE_LOCK_SMALL() do {} while (0)
 #define STRINGSHARE_UNLOCK_SMALL() do {} while (0)
@@ -232,6 +235,7 @@ struct _Eina_Stringshare_Small
 {
    Eina_Stringshare_Small_Bucket *buckets[256];
 };
+
 #define EINA_STRINGSHARE_SMALL_BUCKET_STEP 8
 static Eina_Stringshare_Small _eina_small_share;
 
@@ -400,13 +404,6 @@ _eina_stringshare_head_free(Eina_Stringshare_Head *ed, __UNUSED__ void *data)
    MAGIC_FREE(ed);
 }
 
-/**
- * @endcond
- */
-
-
-static Eina_Stringshare_Small _eina_small_share;
-
 static inline int
 _eina_stringshare_small_cmp(const Eina_Stringshare_Small_Bucket *bucket, int i, const char *pstr, unsigned char plength)
 {
@@ -445,7 +442,7 @@ _eina_stringshare_small_cmp(const Eina_Stringshare_Small_Bucket *bucket, int i, 
 }
 
 static const char *
-_eina_stringshare_small_bucket_find(const Eina_Stringshare_Small_Bucket *bucket, const char *str, unsigned char length, int *index)
+_eina_stringshare_small_bucket_find(const Eina_Stringshare_Small_Bucket *bucket, const char *str, unsigned char length, int *idx)
 {
    const char *pstr = str + 1; /* skip first letter, it's always the same */
    unsigned char plength = length - 1;
@@ -453,7 +450,7 @@ _eina_stringshare_small_bucket_find(const Eina_Stringshare_Small_Bucket *bucket,
 
    if (bucket->count == 0)
      {
-	*index = 0;
+	*idx = 0;
 	return NULL;
      }
 
@@ -477,12 +474,12 @@ _eina_stringshare_small_bucket_find(const Eina_Stringshare_Small_Bucket *bucket,
 	  }
 	else
 	  {
-	     *index = i;
+	     *idx = i;
 	     return bucket->strings[i];
 	  }
      }
 
-   *index = low;
+   *idx = low;
    return NULL;
 }
 
@@ -520,7 +517,7 @@ _eina_stringshare_small_bucket_resize(Eina_Stringshare_Small_Bucket *bucket, int
 }
 
 static const char *
-_eina_stringshare_small_bucket_insert_at(Eina_Stringshare_Small_Bucket **p_bucket, const char *str, unsigned char length, int index)
+_eina_stringshare_small_bucket_insert_at(Eina_Stringshare_Small_Bucket **p_bucket, const char *str, unsigned char length, int idx)
 {
    Eina_Stringshare_Small_Bucket *bucket = *p_bucket;
    int todo, off;
@@ -552,39 +549,39 @@ _eina_stringshare_small_bucket_insert_at(Eina_Stringshare_Small_Bucket **p_bucke
    memcpy(snew, str, length);
    snew[length] = '\0';
 
-   off = index + 1;
-   todo = bucket->count - index;
+   off = idx + 1;
+   todo = bucket->count - idx;
    if (todo > 0)
      {
-	memmove((void *)(bucket->strings + off), bucket->strings + index,
+	memmove((void *)(bucket->strings + off), bucket->strings + idx,
 		todo * sizeof(bucket->strings[0]));
-	memmove(bucket->lengths + off, bucket->lengths + index,
+	memmove(bucket->lengths + off, bucket->lengths + idx,
 		todo * sizeof(bucket->lengths[0]));
-	memmove(bucket->references + off, bucket->references + index,
+	memmove(bucket->references + off, bucket->references + idx,
 		todo * sizeof(bucket->references[0]));
      }
 
-   bucket->strings[index] = snew;
-   bucket->lengths[index] = length;
-   bucket->references[index] = 1;
+   bucket->strings[idx] = snew;
+   bucket->lengths[idx] = length;
+   bucket->references[idx] = 1;
    bucket->count++;
 
    return snew;
 }
 
 static void
-_eina_stringshare_small_bucket_remove_at(Eina_Stringshare_Small_Bucket **p_bucket, int index)
+_eina_stringshare_small_bucket_remove_at(Eina_Stringshare_Small_Bucket **p_bucket, int idx)
 {
    Eina_Stringshare_Small_Bucket *bucket = *p_bucket;
    int todo, off;
 
-   if (bucket->references[index] > 1)
+   if (bucket->references[idx] > 1)
      {
-	bucket->references[index]--;
+	bucket->references[idx]--;
 	return;
      }
 
-   free((char *)bucket->strings[index]);
+   free((char *)bucket->strings[idx]);
 
    if (bucket->count == 1)
      {
@@ -597,17 +594,17 @@ _eina_stringshare_small_bucket_remove_at(Eina_Stringshare_Small_Bucket **p_bucke
      }
 
    bucket->count--;
-   if (index == bucket->count)
+   if (idx == bucket->count)
      goto end;
 
-   off = index + 1;
-   todo = bucket->count - index;
+   off = idx + 1;
+   todo = bucket->count - idx;
 
-   memmove((void *)(bucket->strings + index), bucket->strings + off,
+   memmove((void *)(bucket->strings + idx), bucket->strings + off,
 	   todo * sizeof(bucket->strings[0]));
-   memmove(bucket->lengths + index, bucket->lengths + off,
+   memmove(bucket->lengths + idx, bucket->lengths + off,
 	   todo * sizeof(bucket->lengths[0]));
-   memmove(bucket->references + index, bucket->references + off,
+   memmove(bucket->references + idx, bucket->references + off,
 	   todo * sizeof(bucket->references[0]));
 
  end:
@@ -760,14 +757,14 @@ _eina_stringshare_del_head(Eina_Stringshare_Head **p_bucket, Eina_Stringshare_He
 
 
 static inline Eina_Bool
-_eina_stringshare_node_eq(const Eina_Stringshare_Node *node, const char *str, int slen)
+_eina_stringshare_node_eq(const Eina_Stringshare_Node *node, const char *str, unsigned int slen)
 {
    return ((node->length == slen) &&
 	   (memcmp(node->str, str, slen) == 0));
 }
 
 static Eina_Stringshare_Node *
-_eina_stringshare_head_find(Eina_Stringshare_Head *head, const char *str, int slen)
+_eina_stringshare_head_find(Eina_Stringshare_Head *head, const char *str, unsigned int slen)
 {
    Eina_Stringshare_Node *node, *prev;
 
@@ -834,38 +831,106 @@ _eina_stringshare_node_alloc(int slen)
    return node;
 }
 
+static Eina_Stringshare_Node *
+_eina_stringshare_node_from_str(const char *str)
+{
+   Eina_Stringshare_Node *node, t;
+   const size_t offset = (char *)&(t.str) - (char *)&t;
+
+   node = (Eina_Stringshare_Node *)(str - offset);
+   EINA_MAGIC_CHECK_STRINGSHARE_NODE(node, );
+   return node;
+}
+
+struct dumpinfo
+{
+   int used, saved, dups, unique;
+};
+
+static void
+_eina_stringshare_small_bucket_dump(Eina_Stringshare_Small_Bucket *bucket, struct dumpinfo *di)
+{
+   const char **s = bucket->strings;
+   unsigned char *l = bucket->lengths;
+   unsigned short *r = bucket->references;
+   int i;
+
+   di->used += sizeof(*bucket);
+   di->used += bucket->count * sizeof(*s);
+   di->used += bucket->count * sizeof(*l);
+   di->used += bucket->count * sizeof(*r);
+   di->unique += bucket->count;
+
+   for (i = 0; i < bucket->count; i++, s++, l++, r++)
+     {
+	int dups;
+#ifdef _WIN32
+	printf("DDD: %5hu %5hu '%s'\n", *l, *r, *s);
+#else
+	printf("DDD: %5hhu %5hu '%s'\n", *l, *r, *s);
+#endif
+
+	dups = (*r - 1);
+
+	di->used += *l;
+	di->saved += *l * dups;
+	di->dups += dups;
+     }
+}
+
+static void
+_eina_stringshare_small_dump(struct dumpinfo *di)
+{
+   Eina_Stringshare_Small_Bucket **p_bucket, **p_bucket_end;
+
+   p_bucket = _eina_small_share.buckets;
+   p_bucket_end = p_bucket + 256;
+
+   for (; p_bucket < p_bucket_end; p_bucket++)
+     {
+	Eina_Stringshare_Small_Bucket *bucket = *p_bucket;
+
+	if (!bucket)
+	  continue;
+
+	_eina_stringshare_small_bucket_dump(bucket, di);
+     }
+}
+
+static Eina_Bool
+eina_iterator_array_check(const Eina_Rbtree *rbtree __UNUSED__, Eina_Stringshare_Head *head, struct dumpinfo *fdata)
+{
+   Eina_Stringshare_Node *node;
+
+   STRINGSHARE_LOCK_SMALL();
+   STRINGSHARE_LOCK_BIG();
+
+   fdata->used += sizeof(Eina_Stringshare_Head);
+   for (node = head->head; node; node = node->next)
+     {
+	printf("DDD: %5i %5i ", node->length, node->references);
+	printf("'%s'\n", ((char *)node) + sizeof(Eina_Stringshare_Node));
+	fdata->used += sizeof(Eina_Stringshare_Node);
+	fdata->used += node->length;
+	fdata->saved += (node->references - 1) * node->length;
+	fdata->dups += node->references - 1;
+	fdata->unique++;
+     }
+
+   STRINGSHARE_UNLOCK_BIG();
+   STRINGSHARE_UNLOCK_SMALL();
+
+   return EINA_TRUE;
+}
+
+/**
+ * @endcond
+ */
+
 
 /*============================================================================*
  *                                 Global                                     *
  *============================================================================*/
-
-/*============================================================================*
- *                                   API                                      *
- *============================================================================*/
-
-/**
- * @addtogroup Eina_Stringshare_Group Stringshare
- *
- * These functions allow you to store one copy of a string, and use it
- * throughout your program.
- *
- * This is a method to reduce the number of duplicated strings kept in
- * memory. It's pretty common for the same strings to be dynamically
- * allocated repeatedly between applications and libraries, especially in
- * circumstances where you could have multiple copies of a structure that
- * allocates the string. So rather than duplicating and freeing these
- * strings, you request a read-only pointer to an existing string and
- * only incur the overhead of a hash lookup.
- *
- * It sounds like micro-optimizing, but profiling has shown this can have
- * a significant impact as you scale the number of copies up. It improves
- * string creation/destruction speed, reduces memory use and decreases
- * memory fragmentation, so a win all-around.
- *
- * For more information, you can look at the @ref tutorial_stringshare_page.
- *
- * @{
- */
 
 /**
  * @internal
@@ -983,6 +1048,34 @@ eina_stringshare_threads_shutdown(void)
 
 #endif
 
+/*============================================================================*
+ *                                   API                                      *
+ *============================================================================*/
+
+/**
+ * @addtogroup Eina_Stringshare_Group Stringshare
+ *
+ * These functions allow you to store one copy of a string, and use it
+ * throughout your program.
+ *
+ * This is a method to reduce the number of duplicated strings kept in
+ * memory. It's pretty common for the same strings to be dynamically
+ * allocated repeatedly between applications and libraries, especially in
+ * circumstances where you could have multiple copies of a structure that
+ * allocates the string. So rather than duplicating and freeing these
+ * strings, you request a read-only pointer to an existing string and
+ * only incur the overhead of a hash lookup.
+ *
+ * It sounds like micro-optimizing, but profiling has shown this can have
+ * a significant impact as you scale the number of copies up. It improves
+ * string creation/destruction speed, reduces memory use and decreases
+ * memory fragmentation, so a win all-around.
+ *
+ * For more information, you can look at the @ref tutorial_stringshare_page.
+ *
+ * @{
+ */
+
 /**
  * @brief Retrieve an instance of a string for use in a program.
  *
@@ -1018,14 +1111,16 @@ eina_stringshare_add_length(const char *str, unsigned int slen)
 
    _eina_stringshare_population_add(slen);
 
-   if (slen == 0)
+   if (slen <= 0)
      return "";
    else if (slen == 1)
      return (const char *)_eina_stringshare_single + ((*str) << 1);
    else if (slen < 4)
      {
+	const char *s;
+
 	STRINGSHARE_LOCK_SMALL();
-	const char *s = _eina_stringshare_small_add(str, slen);
+	s = _eina_stringshare_small_add(str, slen);
 	STRINGSHARE_UNLOCK_SMALL();
 	return s;
      }
@@ -1086,7 +1181,7 @@ eina_stringshare_add_length(const char *str, unsigned int slen)
  * it is added to the strings to be searched and a duplicated string
  * of @p str is returned.
  *
- * The string @a str must be NULL terminated ('\0') and its full
+ * The string @p str must be NULL terminated ('@\0') and its full
  * length will be used. To use part of the string or non-null
  * terminated, use eina_stringshare_add_length() instead.
  *
@@ -1111,19 +1206,12 @@ eina_stringshare_add(const char *str)
    return eina_stringshare_add_length(str, slen);
 }
 
-static Eina_Stringshare_Node *
-_eina_stringshare_node_from_str(const char *str)
-{
-   Eina_Stringshare_Node *node, t;
-   const size_t offset = (char *)&(t.str) - (char *)&t;
-
-   node = (Eina_Stringshare_Node *)(str - offset);
-   EINA_MAGIC_CHECK_STRINGSHARE_NODE(node, );
-   return node;
-}
-
 /**
  * Increment references of the given shared string.
+ *
+ * @param str The shared string.
+ * @return    A pointer to an instance of the string on success.
+ *            @c NULL on failure.
  *
  * This is similar to eina_stringshare_add(), but it's faster since it will
  * avoid lookups if possible, but on the down side it requires the parameter
@@ -1156,10 +1244,11 @@ eina_stringshare_ref(const char *str)
      }
    else if (slen < 4)
      {
+	const char *s;
 	_eina_stringshare_population_add(slen);
 
 	STRINGSHARE_LOCK_SMALL();
-	const char *s =  _eina_stringshare_small_add(str, slen);
+	s =  _eina_stringshare_small_add(str, slen);
 	STRINGSHARE_UNLOCK_SMALL();
 
 	return s;
@@ -1275,7 +1364,7 @@ eina_stringshare_del(const char *str)
  *        give NULL, in that case -1 is returned.
  *
  * This function is a cheap way to known the length of a shared
- * string. Note that if the given pointer is not shared or NULL, bad
+ * string. Note that if the given pointer is not shared, bad
  * things will happen, likely a segmentation fault. If in doubt, try
  * strlen().
  */
@@ -1295,83 +1384,6 @@ eina_stringshare_strlen(const char *str)
 
    node = _eina_stringshare_node_from_str(str);
    return node->length;
-}
-
-struct dumpinfo
-{
-   int used, saved, dups, unique;
-};
-
-static void
-_eina_stringshare_small_bucket_dump(Eina_Stringshare_Small_Bucket *bucket, struct dumpinfo *di)
-{
-   const char **s = bucket->strings;
-   unsigned char *l = bucket->lengths;
-   unsigned short *r = bucket->references;
-   int i;
-
-   di->used += sizeof(*bucket);
-   di->used += bucket->count * sizeof(*s);
-   di->used += bucket->count * sizeof(*l);
-   di->used += bucket->count * sizeof(*r);
-   di->unique += bucket->count;
-
-   for (i = 0; i < bucket->count; i++, s++, l++, r++)
-     {
-	int dups;
-	printf("DDD: %5hhu %5hu '%s'\n", *l, *r, *s);
-
-	dups = (*r - 1);
-
-	di->used += *l;
-	di->saved += *l * dups;
-	di->dups += dups;
-     }
-}
-
-static void
-_eina_stringshare_small_dump(struct dumpinfo *di)
-{
-   Eina_Stringshare_Small_Bucket **p_bucket, **p_bucket_end;
-
-   p_bucket = _eina_small_share.buckets;
-   p_bucket_end = p_bucket + 256;
-
-   for (; p_bucket < p_bucket_end; p_bucket++)
-     {
-	Eina_Stringshare_Small_Bucket *bucket = *p_bucket;
-
-	if (!bucket)
-	  continue;
-
-	_eina_stringshare_small_bucket_dump(bucket, di);
-     }
-}
-
-static Eina_Bool
-eina_iterator_array_check(const Eina_Rbtree *rbtree __UNUSED__, Eina_Stringshare_Head *head, struct dumpinfo *fdata)
-{
-   Eina_Stringshare_Node *node;
-
-   STRINGSHARE_LOCK_SMALL();
-   STRINGSHARE_LOCK_BIG();
-
-   fdata->used += sizeof(Eina_Stringshare_Head);
-   for (node = head->head; node; node = node->next)
-     {
-	printf("DDD: %5i %5i ", node->length, node->references);
-	printf("'%s'\n", ((char *)node) + sizeof(Eina_Stringshare_Node));
-	fdata->used += sizeof(Eina_Stringshare_Node);
-	fdata->used += node->length;
-	fdata->saved += (node->references - 1) * node->length;
-	fdata->dups += node->references - 1;
-	fdata->unique++;
-     }
-
-   STRINGSHARE_UNLOCK_BIG();
-   STRINGSHARE_UNLOCK_SMALL();
-
-   return EINA_TRUE;
 }
 
 /**

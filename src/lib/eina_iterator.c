@@ -46,7 +46,7 @@ static const char EINA_MAGIC_ITERATOR_STR[] = "Eina Iterator";
   do {								\
     if (!EINA_MAGIC_CHECK(d, EINA_MAGIC_ITERATOR))		\
       EINA_MAGIC_FAIL(d, EINA_MAGIC_ITERATOR);			\
-  } while(0);
+  } while(0)
 
 /**
  * @endcond
@@ -56,30 +56,6 @@ static const char EINA_MAGIC_ITERATOR_STR[] = "Eina Iterator";
 /*============================================================================*
  *                                 Global                                     *
  *============================================================================*/
-
-/*============================================================================*
- *                                   API                                      *
- *============================================================================*/
-
-/**
- * @addtogroup Eina_Iterator_Group Iterator Functions
- *
- * @brief These functions manage iterators on containers.
- *
- * These functions allow to access elements of a container in a
- * generic way, without knowing which container is used (a bit like
- * iterators in the C++ STL). Iterators only allows sequential access
- * (that is, from an element to the next one). For random access, see
- * @ref Eina_Accessor_Group.
- *
- * An iterator is created from container data types, so no creation
- * function is available here. An iterator is deleted with
- * eina_iterator_free(). To get the data and iterate, use
- * eina_iterator_next(). To call a function on all the elements of a
- * container, use eina_iterator_foreach().
- *
- * @{
- */
 
 /**
  * @internal
@@ -114,6 +90,30 @@ eina_iterator_shutdown(void)
 {
    return EINA_TRUE;
 }
+
+/*============================================================================*
+ *                                   API                                      *
+ *============================================================================*/
+
+/**
+ * @addtogroup Eina_Iterator_Group Iterator Functions
+ *
+ * @brief These functions manage iterators on containers.
+ *
+ * These functions allow to access elements of a container in a
+ * generic way, without knowing which container is used (a bit like
+ * iterators in the C++ STL). Iterators only allows sequential access
+ * (that is, from an element to the next one). For random access, see
+ * @ref Eina_Accessor_Group.
+ *
+ * An iterator is created from container data types, so no creation
+ * function is available here. An iterator is deleted with
+ * eina_iterator_free(). To get the data and iterate, use
+ * eina_iterator_next(). To call a function on all the elements of a
+ * container, use eina_iterator_foreach().
+ *
+ * @{
+ */
 
 /**
  * @brief Free an iterator.

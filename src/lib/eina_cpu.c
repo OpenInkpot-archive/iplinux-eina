@@ -24,13 +24,13 @@
 # ifdef _WIN32
 #  define WIN32_LEAN_AND_MEAN
 #  include <windows.h>
-# elif defined (__SUNPRO_C)
+# elif defined (__SUNPRO_C) || defined(__GNU__)
 #  include <unistd.h>
 # elif defined (__FreeBSD__) || defined (__OpenBSD__) || defined (__NetBSD__) || defined (__DragonFly__) || defined (__MacOSX__) || ( defined (__MACH__) && defined (__APPLE__))
 #  include <unistd.h>
 #  include <sys/param.h>
 #  include <sys/sysctl.h>
-# elif defined (__linux__)
+# elif defined (__linux__) || defined(__GLIBC__)
 #  define _GNU_SOURCE
 #  include <sched.h>
 # endif
@@ -72,6 +72,7 @@ static inline void _x86_cpuid(int op, int *a, int *b, int *c, int *d)
 		: "cc");
 }
 
+static
 void _x86_simd(Eina_Cpu_Features *features)
 {
 	int a, b, c, d;
@@ -133,7 +134,7 @@ EAPI int eina_cpu_count(void)
    GetSystemInfo(&sysinfo);
    return sysinfo.dwNumberOfProcessors;
 
-# elif defined (__SUNPRO_C)
+# elif defined (__SUNPRO_C) || defined(__GNU__)
    /*
     * _SC_NPROCESSORS_ONLN: number of processors that are online, that
                             is available when sysconf is called. The number
@@ -164,7 +165,7 @@ EAPI int eina_cpu_count(void)
 
    return cpus;
 
-# elif defined (__linux__)
+# elif defined (__linux__) || defined(__GLIBC__)
    cpu_set_t cpu;
    int i;
    static int cpus = 0;

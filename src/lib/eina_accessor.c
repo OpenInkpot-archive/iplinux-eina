@@ -46,7 +46,7 @@ static const char EINA_MAGIC_ACCESSOR_STR[] = "Eina Accessor";
   do {								\
     if (!EINA_MAGIC_CHECK(d, EINA_MAGIC_ACCESSOR))		\
       EINA_MAGIC_FAIL(d, EINA_MAGIC_ACCESSOR);			\
-  } while(0);
+  } while(0)
 
 /**
  * @endcond
@@ -55,30 +55,6 @@ static const char EINA_MAGIC_ACCESSOR_STR[] = "Eina Accessor";
 /*============================================================================*
  *                                 Global                                     *
  *============================================================================*/
-
-/*============================================================================*
- *                                   API                                      *
- *============================================================================*/
-
-/**
- * @addtogroup Eina_Accessor_Group Accessor Functions
- *
- * @brief These functions manage accessor on containers.
- *
- * These functions allow to access elements of a container in a
- * generic way, without knowing which container is used (a bit like
- * iterators in the C++ STL). Accessors allows random access (that is, any
- * element in the container). For sequential access, see
- * @ref Eina_Iterator_Group.
- *
- * An accessor is created from container data types, so no creation
- * function is available here. An accessor is deleted with
- * eina_accessor_free(). To get the data of an element at a given
- * position, use eina_accessor_data_get(). To call a function on
- * chosen elements of a container, use eina_accessor_over().
- *
- * @{
- */
 
 /**
  * @internal
@@ -113,6 +89,30 @@ eina_accessor_shutdown(void)
 {
    return EINA_TRUE;
 }
+
+/*============================================================================*
+ *                                   API                                      *
+ *============================================================================*/
+
+/**
+ * @addtogroup Eina_Accessor_Group Accessor Functions
+ *
+ * @brief These functions manage accessor on containers.
+ *
+ * These functions allow to access elements of a container in a
+ * generic way, without knowing which container is used (a bit like
+ * iterators in the C++ STL). Accessors allows random access (that is, any
+ * element in the container). For sequential access, see
+ * @ref Eina_Iterator_Group.
+ *
+ * An accessor is created from container data types, so no creation
+ * function is available here. An accessor is deleted with
+ * eina_accessor_free(). To get the data of an element at a given
+ * position, use eina_accessor_data_get(). To call a function on
+ * chosen elements of a container, use eina_accessor_over().
+ *
+ * @{
+ */
 
 /**
  * @brief Free an accessor.

@@ -23,6 +23,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#ifdef HAVE_EVIL
+# include <Evil.h>
+#endif
+
 #include "eina_config.h"
 #include "eina_private.h"
 #include "eina_magic.h"
@@ -78,13 +82,13 @@ struct _Eina_Rectangle_Alloc
   do {							       \
      if (!EINA_MAGIC_CHECK((d), EINA_RECTANGLE_POOL_MAGIC))    \
        EINA_MAGIC_FAIL((d), EINA_RECTANGLE_POOL_MAGIC);	       \
-  } while (0);
+  } while (0)
 
 #define EINA_MAGIC_CHECK_RECTANGLE_ALLOC(d)		       \
   do {							       \
      if (!EINA_MAGIC_CHECK((d), EINA_RECTANGLE_ALLOC_MAGIC))   \
        EINA_MAGIC_FAIL((d), EINA_RECTANGLE_ALLOC_MAGIC);       \
-  } while (0);
+  } while (0)
 
 static Eina_Mempool *_eina_rectangle_alloc_mp = NULL;
 static Eina_Mempool *_eina_rectangle_mp = NULL;
@@ -192,30 +196,30 @@ _eina_rectangle_empty_space_find(Eina_List *empty, int w, int h, int *x, int *y)
 	       }
 	     else
 	       {
-		  int x1, y1, w1, h1;
+		  int rx1, ry1, rw1, rh1;
 		  int x2, y2, w2, h2;
 
-		  x1 = r->x + w;
-		  y1 = r->y;
-		  w1 = r->w - w;
+		  rx1 = r->x + w;
+		  ry1 = r->y;
+		  rw1 = r->w - w;
 		  /* h1 could be h or r->h */
 		  x2 = r->x;
 		  y2 = r->y + h;
 		  /* w2 could be w or r->w */
 		  h2 = r->h - h;
 
-		  if (w1 * r->h > h2 * r->w)
+		  if (rw1 * r->h > h2 * r->w)
 		    {
-		       h1 = r->h;
+		       rh1 = r->h;
 		       w2 = w;
 		    }
 		  else
 		    {
-		       h1 = h;
+		       rh1 = h;
 		       w2 = r->w;
 		    }
 
-		  EINA_RECTANGLE_SET(r, x1, y1, w1, h1);
+		  EINA_RECTANGLE_SET(r, rx1, ry1, rw1, rh1);
 		  empty = _eina_rectangle_merge_list(empty, r);
 
 		  r = eina_rectangle_new(x2, y2, w2, h2);
@@ -237,10 +241,6 @@ _eina_rectangle_empty_space_find(Eina_List *empty, int w, int h, int *x, int *y)
 
 /*============================================================================*
  *                                 Global                                     *
- *============================================================================*/
-
-/*============================================================================*
- *                                   API                                      *
  *============================================================================*/
 
 Eina_Bool
@@ -308,6 +308,24 @@ eina_rectangle_shutdown(void)
    return EINA_TRUE;
 }
 
+/*============================================================================*
+ *                                   API                                      *
+ *============================================================================*/
+
+/**
+ * @brief Create a new rectangle.
+ *
+ * @param x The X coordinate of the top left corner of the rectangle.
+ * @param y The Y coordinate of the top left corner of the rectangle.
+ * @param w The width of the rectangle.
+ * @param h The height of the rectangle.
+ * @return The new rectangle on success, @ NULL otherwise.
+ *
+ * This function creates a rectangle which top left corner has the
+ * coordinates (@p x, @p y), with height @p w and height @p h and adds
+ * it to the rectangles pool. No check is done on @p w and @p h. This
+ * function returns a new rectangle on success, @c NULL otherwhise.
+ */
 EAPI Eina_Rectangle *
 eina_rectangle_new(int x, int y, int w, int h)
 {
@@ -329,6 +347,13 @@ eina_rectangle_new(int x, int y, int w, int h)
    return rect;
 }
 
+/**
+ * @brief Free the given rectangle.
+ *
+ * @param rect The rectangle to free.
+ *
+ * This function removes @p rect from the rectangles pool.
+ */
 EAPI void
 eina_rectangle_free(Eina_Rectangle *rect)
 {
@@ -395,6 +420,14 @@ eina_rectangle_pool_free(Eina_Rectangle_Pool *pool)
    MAGIC_FREE(pool);
 }
 
+/**
+ * @brief Return the number of rectangles in the given pool.
+ *
+ * @param pool The pool.
+ * @return The number of rectangles in the pool.
+ *
+ * This function returns the number of rectangles in @p pool.
+ */
 EAPI int
 eina_rectangle_pool_count(Eina_Rectangle_Pool *pool)
 {
@@ -496,6 +529,15 @@ eina_rectangle_pool_release(Eina_Rectangle *rect)
      }
 }
 
+/**
+ * @brief Return the pool of the given rectangle.
+ *
+ * @param rect The rectangle.
+ * @return The pool of the given rectangle.
+ *
+ * This function returns the pool in which @p rect is. If  @p rect is
+ * @c NULL, @c NULL is returned.
+ */
 EAPI Eina_Rectangle_Pool *
 eina_rectangle_pool_get(Eina_Rectangle *rect)
 {
@@ -509,6 +551,15 @@ eina_rectangle_pool_get(Eina_Rectangle *rect)
    return era->pool;
 }
 
+/**
+ * @brief Set the data to the given pool.
+ *
+ * @param pool The pool.
+ * @param data The data to set.
+ *
+ * This function sets @p data to @p pool. If @p pool is @c NULL, this
+ * function does nothing.
+ */
 EAPI void
 eina_rectangle_pool_data_set(Eina_Rectangle_Pool *pool, const void *data)
 {
@@ -521,6 +572,16 @@ eina_rectangle_pool_data_set(Eina_Rectangle_Pool *pool, const void *data)
    pool->data = (void*) data;
 }
 
+/**
+ * @brief Get the data from the given pool.
+ *
+ * @param pool The pool.
+ * @return The returned data.
+ *
+ * This function gets the data from @p pool set by
+ * eina_rectangle_pool_data_set(). If @p pool is @c NULL, this
+ * function returns @c NULL.
+ */
 EAPI void *
 eina_rectangle_pool_data_get(Eina_Rectangle_Pool *pool)
 {
@@ -530,6 +591,19 @@ eina_rectangle_pool_data_get(Eina_Rectangle_Pool *pool)
    return pool->data;
 }
 
+/**
+ * @brief Return the width and height of the given pool.
+ *
+ * @param pool The pool.
+ * @param w The returned width.
+ * @param h The returned height.
+ * @return #EINA_TRUE on sucess, #EINA_FALSE otherwise.
+ *
+ * This function returns the width and height of @p pool and store
+ * them in respectively @p w and @p h if they are not @c NULL. If
+ * @p pool is @c NULL, #EINA_FALSE is returned. Otherwise #EINA_TRUE is
+ * returned.
+ */
 EAPI Eina_Bool
 eina_rectangle_pool_geometry_get(Eina_Rectangle_Pool *pool, int *w, int *h)
 {

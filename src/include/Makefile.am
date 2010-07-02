@@ -4,6 +4,7 @@ EINAHEADERS = \
 eina_safety_checks.h \
 eina_error.h \
 eina_log.h \
+eina_inline_log.x \
 eina_fp.h \
 eina_inline_f32p32.x \
 eina_inline_f16p16.x \
@@ -41,7 +42,11 @@ eina_cpu.h \
 eina_tiler.h \
 eina_hamster.h \
 eina_matrixsparse.h \
-eina_inline_tiler.x
+eina_inline_tiler.x \
+eina_str.h \
+eina_inline_str.x \
+eina_strbuf.h \
+eina_quadtree.h
 
 installed_mainheaderdir = $(includedir)/eina-@VMAJ@
 dist_installed_mainheader_DATA = Eina.h eina_config.h

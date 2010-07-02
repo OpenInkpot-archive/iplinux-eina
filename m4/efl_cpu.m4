@@ -30,7 +30,7 @@ dnl check if the CPU is supporting MMX instruction sets
 _efl_build_cpu_mmx="no"
 if test "x${_efl_enable_cpu_mmx}" = "xyes" ; then
    case $host_cpu in
-      i*86 | x86_64)
+      i*86 | x86_64 | amd64)
          _efl_build_cpu_mmx="yes"
          ;;
    esac
@@ -48,8 +48,7 @@ if test "x${_efl_build_cpu_mmx}" = "xyes" ; then
 
    AC_COMPILE_IFELSE(
       [AC_LANG_PROGRAM([[]],
-                       [[]])
-      ],
+                       [[]])],
       [
        have_linker_option="yes"
        EFL_SIMD_FLAGS="${EFL_SIMD_FLAGS} -mmmx"],
@@ -68,11 +67,7 @@ if test "x${_efl_build_cpu_mmx}" = "xyes" ; then
    AC_DEFINE([EFL_HAVE_MMX], [1], [Define to mention that MMX is supported])
 fi
 
-if test "x${_efl_build_cpu_mmx}" = "xyes" ; then
-   m4_default([$1], [:])
-else
-   m4_default([$2], [:])
-fi
+AS_IF([test "x$_efl_build_cpu_mmx" = "xyes"], [$1], [$2])
 ])
 
 dnl Usage: EFL_CHECK_CPU_SSE([ACTION-IF-FOUND [, ACTION-IF-NOT-FOUND]])
@@ -102,7 +97,7 @@ dnl check if the CPU is supporting SSE instruction sets
 _efl_build_cpu_sse="no"
 if test "x${_efl_enable_cpu_sse}" = "xyes" ; then
    case $host_cpu in
-      i*86 | x86_64)
+      i*86 | x86_64 | amd64)
          _efl_build_cpu_sse="yes"
          ;;
    esac
@@ -141,11 +136,7 @@ if test "x${_efl_build_cpu_sse}" = "xyes" ; then
    AC_DEFINE([EFL_HAVE_SSE], [1], [Define to mention that SSE is supported])
 fi
 
-if test "x${_efl_build_cpu_sse}" = "xyes" ; then
-   m4_default([$1], [:])
-else
-   m4_default([$2], [:])
-fi
+AS_IF([test "x$_efl_build_cpu_sse" = "xyes"], [$1], [$2])
 ])
 
 dnl Usage: EFL_CHECK_CPU_SSE2([ACTION-IF-FOUND [, ACTION-IF-NOT-FOUND]])
@@ -176,7 +167,7 @@ dnl check if the CPU is supporting SSE2 instruction sets
 _efl_build_cpu_sse2="no"
 if test "x${_efl_enable_cpu_sse2}" = "xyes" ; then
    case $host_cpu in
-      i686 | x86_64)
+      i*86 | x86_64 | amd64)
          _efl_build_cpu_sse2="yes"
          ;;
    esac
@@ -215,11 +206,7 @@ if test "x${_efl_build_cpu_sse2}" = "xyes" ; then
    AC_DEFINE([EFL_HAVE_SSE2], [1], [Define to mention that SSE2 is supported])
 fi
 
-if test "x${_efl_build_cpu_sse2}" = "xyes" ; then
-   m4_default([$1], [:])
-else
-   m4_default([$2], [:])
-fi
+AS_IF([test "x$_efl_build_cpu_sse2" = "xyes"], [$1], [$2])
 ])
 
 dnl Usage: EFL_CHECK_CPU_ALTIVEC([ACTION-IF-FOUND [, ACTION-IF-NOT-FOUND]])
@@ -305,11 +292,7 @@ if test "x${_efl_have_faltivec}" = "xyes" ; then
    AC_DEFINE([EFL_HAVE_ALTIVEC], [1], [Define to mention that ALTIVEC is supported])
 fi
 
-if test "x${_efl_have_faltivec}" = "xyes" ; then
-   m4_default([$1], [:])
-else
-   m4_default([$2], [:])
-fi
+AS_IF([test "x$_efl_have_faltivec" = "xyes"], [$1], [$2])
 ])
 
 dnl Usage: EFL_CHECK_CPU_NEON([ACTION-IF-FOUND [, ACTION-IF-NOT-FOUND]])
@@ -352,11 +335,7 @@ if test "x${_efl_build_cpu_neon}" = "xyes" ; then
    AC_DEFINE([EFL_HAVE_NEON], [1], [Define to mention that NEON is supported])
 fi
 
-if test "x${_efl_build_cpu_neon}" = "xyes" ; then
-   m4_default([$1], [:])
-else
-   m4_default([$2], [:])
-fi
+AS_IF([test "x$_efl_build_cpu_neon" = "xyes"], [$1], [$2])
 ])
 
 dnl End of efl_cpu.m4

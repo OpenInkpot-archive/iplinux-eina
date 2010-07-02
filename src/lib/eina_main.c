@@ -22,6 +22,10 @@
 # include "config.h"
 #endif
 
+#ifdef EFL_HAVE_PTHREAD
+# include <pthread.h>
+#endif
+
 #include "eina_config.h"
 #include "eina_private.h"
 #include "eina_types.h"
@@ -39,6 +43,9 @@
 #include "eina_rectangle.h"
 #include "eina_safety_checks.h"
 
+static Eina_Version _version = { VMAJ, VMIN, VMIC, VREV };
+EAPI Eina_Version *eina_version = &_version;
+
 /*============================================================================*
  *                                  Local                                     *
  *============================================================================*/
@@ -48,7 +55,9 @@
  */
 
 static int _eina_main_count = 0;
+#ifdef EFL_HAVE_PTHREAD
 static int _eina_main_thread_count = 0;
+#endif
 static int _eina_log_dom = -1;
 
 #ifdef ERR
@@ -62,12 +71,11 @@ static int _eina_log_dom = -1;
 #define DBG(...) EINA_LOG_DOM_DBG(_eina_log_dom, __VA_ARGS__)
 
 #ifdef EFL_HAVE_PTHREAD
-#include <pthread.h>
 static Eina_Bool _threads_activated = EINA_FALSE;
 static pthread_mutex_t _mutex = PTHREAD_MUTEX_INITIALIZER;
-#define LOCK() if(_threads_activated) pthread_mutex_lock(&_mutex);
-#define UNLOCK() if(_threads_activated) pthread_mutex_unlock(&_mutex);
-#define UNLOCK_FORCE() pthread_mutex_unlock(&_mutex);
+#define LOCK() if(_threads_activated) pthread_mutex_lock(&_mutex)
+#define UNLOCK() if(_threads_activated) pthread_mutex_unlock(&_mutex)
+#define UNLOCK_FORCE() pthread_mutex_unlock(&_mutex)
 #else
 #define LOCK() do {} while (0)
 #define UNLOCK() do {} while (0)
@@ -94,6 +102,8 @@ S(convert);
 S(counter);
 S(benchmark);
 S(rectangle);
+S(strbuf);
+S(quadtree);
 #undef S
 
 struct eina_desc_setup
@@ -120,7 +130,9 @@ static const struct eina_desc_setup _eina_desc_setup[] = {
   S(convert),
   S(counter),
   S(benchmark),
-  S(rectangle)
+  S(rectangle),
+  S(strbuf),
+  S(quadtree)
 #undef S
 };
 static const size_t _eina_desc_setup_len = sizeof(_eina_desc_setup) / sizeof(_eina_desc_setup[0]);

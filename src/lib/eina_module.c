@@ -46,6 +46,12 @@ void *alloca (size_t);
 #include <dirent.h>
 #include <string.h>
 
+#ifndef _MSC_VER
+# include <libgen.h>
+#else
+# include <Evil.h>
+#endif
+
 #include <dlfcn.h>
 
 #ifdef HAVE_EVIL
@@ -85,12 +91,6 @@ static int EINA_MODULE_LOG_DOM = -1;
 #undef DBG
 #endif
 #define DBG(...) EINA_LOG_DOM_DBG(EINA_MODULE_LOG_DOM, __VA_ARGS__)
-
-#if defined(_WIN32) || defined(__CYGWIN__)
-# define MODULE_EXTENSION ".dll"
-#else
-# define MODULE_EXTENSION ".so"
-#endif /* !defined(_WIN32) && !defined(__CYGWIN__) */
 
 #define EINA_MODULE_SYMBOL_INIT "__eina_module_init"
 #define EINA_MODULE_SYMBOL_SHUTDOWN "__eina_module_shutdown"
@@ -137,14 +137,13 @@ static void _dir_list_cb(const char *name, const char *path, void *data)
    size_t length;
 
    length = strlen(name);
-   if (length < sizeof(MODULE_EXTENSION)) /* x.so */
+   if (length < sizeof(SHARED_LIB_SUFFIX)) /* x.so */
      return;
-   if (!strcmp(name + length - sizeof(MODULE_EXTENSION) + 1,
-	       MODULE_EXTENSION))
+   if (!strcmp(name + length - sizeof(SHARED_LIB_SUFFIX) + 1,
+	       SHARED_LIB_SUFFIX))
      {
 	char *file;
 	Eina_Module *m;
-	size_t length;
 
 	length = strlen(path) + strlen(name) + 2;
 
@@ -169,18 +168,6 @@ static void _dir_list_cb(const char *name, const char *path, void *data)
 /*============================================================================*
  *                                 Global                                     *
  *============================================================================*/
-
-/*============================================================================*
- *                                   API                                      *
- *============================================================================*/
-
-/**
- * @addtogroup Eina_Module_Group Module
- *
- * @brief These functions provide module management.
- *
- * @{
- */
 
 /**
  * @cond LOCAL
@@ -252,6 +239,18 @@ eina_module_shutdown(void)
    EINA_MODULE_LOG_DOM = -1;
    return EINA_TRUE;
 }
+
+/*============================================================================*
+ *                                   API                                      *
+ *============================================================================*/
+
+/**
+ * @addtogroup Eina_Module_Group Module
+ *
+ * @brief These functions provide module management.
+ *
+ * @{
+ */
 
 /**
  * @brief Return a new module.
@@ -451,10 +450,10 @@ EAPI const char * eina_module_file_get(const Eina_Module *m)
 
 EAPI char *eina_module_symbol_path_get(const void *symbol, const char *sub_dir)
 {
-   EINA_SAFETY_ON_NULL_RETURN_VAL(symbol, NULL);
-
 #ifdef HAVE_DLADDR
    Dl_info eina_dl;
+
+   EINA_SAFETY_ON_NULL_RETURN_VAL(symbol, NULL);
 
    if (dladdr(symbol, &eina_dl))
      {
@@ -517,6 +516,51 @@ EAPI char *eina_module_environment_path_get(const char *env, const char *sub_dir
    return NULL;
 }
 
+static void _dir_arch_list_db(const char *name, const char *path, void *data)
+{
+   Dir_List_Get_Cb_Data *cb_data = data;
+   Eina_Module *m;
+   char *file;
+   size_t length;
+
+   length = strlen(path) + 1 + strlen(name) + 1 +
+     strlen((char *)(cb_data->data)) + 1 + sizeof("module") +
+     sizeof(SHARED_LIB_SUFFIX) + 1;
+
+   file = alloca(length);
+   snprintf(file, length, "%s/%s/%s/module" SHARED_LIB_SUFFIX,
+            path, name, (char *)(cb_data->data));
+   m = eina_module_new(file);
+   if (!m)
+     return;
+   eina_array_push(cb_data->array, m);
+}
+
+/**
+ * Get a list of modules found on the directory path
+ *
+ * @param array The array that stores the list of the modules.
+ * @param path The directory's path to search for modules
+ * @param arch the architecture string
+ * @param cb Callback function to call, if the return value of the callback is zero
+ * it won't be added to the list, if it is one, it will.
+ * @param data Data passed to the callback function
+ */
+EAPI Eina_Array * eina_module_arch_list_get(Eina_Array *array, const char *path, const char *arch)
+{
+   Dir_List_Get_Cb_Data list_get_cb_data;
+
+   if ((!path) || (!arch)) return array;
+
+   list_get_cb_data.array = array ? array : eina_array_new(4);
+   list_get_cb_data.cb = NULL;
+   list_get_cb_data.data = (void *)arch;
+
+   eina_file_dir_list(path, 0, &_dir_arch_list_db, &list_get_cb_data);
+
+   return list_get_cb_data.array;
+}
+
 /**
  * Get a list of modules found on the directory path
  *
@@ -564,12 +608,18 @@ eina_module_find(const Eina_Array *array, const char *module)
 
    EINA_ARRAY_ITER_NEXT(array, i, m, iterator)
    {
-      const char *file_m;
+      char *file_m;
+      char *tmp;
       ssize_t len;
 
-      file_m = basename(eina_module_file_get(m));
+      /* basename() can modify its argument, so we first get a copie */
+      /* do not use strdupa, as opensolaris does not have it */
+      len = strlen(eina_module_file_get(m));
+      tmp = alloca(len + 1);
+      memcpy(tmp, eina_module_file_get(m), len + 1);
+      file_m = basename(tmp);
       len = strlen(file_m);
-      len -= sizeof(MODULE_EXTENSION) - 1;
+      len -= sizeof(SHARED_LIB_SUFFIX) - 1;
       if (len <= 0) continue;
       if (!strncmp(module, file_m, len)) return m;
    }
@@ -613,7 +663,7 @@ EAPI void eina_module_list_unload(Eina_Array *array)
  * Helper function that iterates over the list of modules and calls
  * eina_module_free on each
  */
-EAPI void eina_module_list_flush(Eina_Array *array)
+EAPI void eina_module_list_free(Eina_Array *array)
 {
    Eina_Array_Iterator iterator;
    Eina_Module *m;

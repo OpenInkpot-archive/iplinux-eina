@@ -28,6 +28,7 @@ eina_counter.c \
 eina_iterator.c \
 eina_accessor.c \
 eina_convert.c \
+eina_fp.c \
 eina_rbtree.c \
 eina_benchmark.c \
 eina_rectangle.c \
@@ -35,7 +36,10 @@ eina_stringshare.c \
 eina_cpu.c \
 eina_tiler.c \
 eina_hamster.c \
-eina_safety_checks.c
+eina_safety_checks.c \
+eina_str.c \
+eina_strbuf.c \
+eina_quadtree.c
 
 if EINA_STATIC_BUILD_CHAINED_POOL
 base_sources += $(top_srcdir)/src/modules/mp/chained_pool/eina_chained_mempool.c
@@ -110,7 +114,7 @@ eina_amalgamation.c: $(base_sources) Makefile
 	@echo "#include \"Eina.h\"" >> eina_amalgamation.c
 
 	@for f in $(base_sources); do \
-	   if [ `expr substr $$f 1 1` != '/' ]; then \
+	   if [ `echo $$f | sed -e 's/^...\(.\).*/\1/'` != '/' ]; then \
 		  file="$(srcdir)/$$f" ; \
 	   else \
 		  file="$$f" ; \

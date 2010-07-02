@@ -19,6 +19,7 @@
 #ifndef EINA_LOG_H_
 #define EINA_LOG_H_
 
+#include <stdlib.h>
 #include <stdarg.h>
 
 #include "eina_types.h"
@@ -48,7 +49,62 @@
  * @{
  */
 
+/**
+ * EINA_LOG_DOMAIN_GLOBAL is the general purpose log domain to be
+ * used, it is always registered and available everywhere.
+ */
 EAPI extern int EINA_LOG_DOMAIN_GLOBAL;
+
+/**
+ * @def EINA_LOG_DOMAIN_DEFAULT
+ * This macro defines the domain to use with the macros EINA_LOG_DOM_DBG(),
+ * EINA_LOG_DOM_INFO(), EINA_LOG_DOM_WARN(), EINA_LOG_DOM_ERR() and
+ * EINA_LOG_DOM_CRIT().
+ *
+ * If not defined prior to the inclusion of this header, then it
+ * defaults to #EINA_LOG_DOMAIN_GLOBAL.
+ *
+ * @note One may like to redefine this in its code to avoid typing too
+ *       much. In this case the recomended way is:
+ *
+ * @code
+ * #include <Eina.h>
+ * #undef EINA_LOG_DOMAIN_DEFAULT
+ * #define EINA_LOG_DOMAIN_DEFAULT _log_dom
+ * static int _log_dom = -1;
+ *
+ * int main(void)
+ * {
+ *    eina_init();
+ *    _log_dom = eina_log_domain_register("mydom", EINA_COLOR_CYAN);
+ *    EINA_LOG_ERR("using my own domain");
+ *    return 0;
+ * }
+ * @endcode
+ *
+ * @warning If one defines the domain prior to inclusion of this
+ *          header, the defined log domain symbol must be defined
+ *          prior as well, otherwise the inlined functions defined by
+ *          Eina will fail to find the symbol, causing build failure.
+ *
+ * @code
+ * #define EINA_LOG_DOMAIN_DEFAULT _log_dom
+ * static int _log_dom = -1; // must come before inclusion of Eina.h!
+ * #include <Eina.h>
+ *
+ * int main(void)
+ * {
+ *    eina_init();
+ *    _log_dom = eina_log_domain_register("mydom", EINA_COLOR_CYAN);
+ *    EINA_LOG_ERR("using my own domain");
+ *    return 0;
+ * }
+ * @endcode
+ *
+ */
+#ifndef EINA_LOG_DOMAIN_DEFAULT
+#define EINA_LOG_DOMAIN_DEFAULT EINA_LOG_DOMAIN_GLOBAL
+#endif
 
 
 /**
@@ -114,54 +170,63 @@ EAPI extern int EINA_LOG_DOMAIN_GLOBAL;
 
 /**
  * @def EINA_LOG_CRIT(fmt, ...)
- * Logs a message with level CRITICAL on the global domain with the specified
+ * Logs a message with level CRITICAL on the default domain with the specified
  * format.
  */
 #define EINA_LOG_CRIT(fmt, ...) \
-	EINA_LOG(EINA_LOG_DOMAIN_GLOBAL, EINA_LOG_LEVEL_CRITICAL, fmt, ##__VA_ARGS__)
+	EINA_LOG(EINA_LOG_DOMAIN_DEFAULT, EINA_LOG_LEVEL_CRITICAL, fmt, ##__VA_ARGS__)
 
 /**
  * @def EINA_LOG_ERR(fmt, ...)
- * Logs a message with level ERROR on the global domain with the specified
+ * Logs a message with level ERROR on the default domain with the specified
  * format.
  */
 #define EINA_LOG_ERR(fmt, ...) \
-	EINA_LOG(EINA_LOG_DOMAIN_GLOBAL, EINA_LOG_LEVEL_ERR, fmt, ##__VA_ARGS__)
+	EINA_LOG(EINA_LOG_DOMAIN_DEFAULT, EINA_LOG_LEVEL_ERR, fmt, ##__VA_ARGS__)
 
 /**
  * @def EINA_LOG_INFO(fmt, ...)
- * Logs a message with level INFO on the global domain with the specified
+ * Logs a message with level INFO on the default domain with the specified
  * format.
  */
 #define EINA_LOG_INFO(fmt, ...) \
-	EINA_LOG(EINA_LOG_DOMAIN_GLOBAL, EINA_LOG_LEVEL_INFO, fmt, ##__VA_ARGS__)
+	EINA_LOG(EINA_LOG_DOMAIN_DEFAULT, EINA_LOG_LEVEL_INFO, fmt, ##__VA_ARGS__)
 
 /**
  * @def EINA_LOG_WARN(fmt, ...)
- * Logs a message with level WARN on the global domain with the specified
+ * Logs a message with level WARN on the default domain with the specified
  * format.
  */
 #define EINA_LOG_WARN(fmt, ...) \
-	EINA_LOG(EINA_LOG_DOMAIN_GLOBAL, EINA_LOG_LEVEL_WARN, fmt, ##__VA_ARGS__)
+	EINA_LOG(EINA_LOG_DOMAIN_DEFAULT, EINA_LOG_LEVEL_WARN, fmt, ##__VA_ARGS__)
 
 /**
  * @def EINA_LOG_DBG(fmt, ...)
- * Logs a message with level DEBUG on the global domain with the specified
+ * Logs a message with level DEBUG on the default domain with the specified
  * format.
  */
 #define EINA_LOG_DBG(fmt, ...) \
-	EINA_LOG(EINA_LOG_DOMAIN_GLOBAL, EINA_LOG_LEVEL_DBG, fmt, ##__VA_ARGS__)
+	EINA_LOG(EINA_LOG_DOMAIN_DEFAULT, EINA_LOG_LEVEL_DBG, fmt, ##__VA_ARGS__)
 
+/**
+ * @typedef Eina_Log_Domain
+ * The domain used for logging.
+ */
 typedef struct _Eina_Log_Domain Eina_Log_Domain;
 
+/**
+ * @struct _Eina_Log_Domain
+ * The domain used for logging.
+ */
 struct _Eina_Log_Domain
 {
-   int level;     /**< Max level to log */
+   int level;              /**< Max level to log */
    const char *domain_str; /**< Formatted string with color to print */
    const char *name;       /**< Domain name */
+   size_t namelen;   /**< strlen(name) */
 
    /* Private */
-   Eina_Bool deleted:1; /**< Flags deletion of domain, a free slot */
+   Eina_Bool deleted:1;    /**< Flags deletion of domain, a free slot */
 };
 
 EAPI void eina_log_threads_enable(void);
@@ -192,8 +257,31 @@ typedef void (*Eina_Log_Print_Cb)(const Eina_Log_Domain *d, Eina_Log_Level level
 /*
  * Customization
  */
-EAPI void eina_log_print_cb_set(Eina_Log_Print_Cb cb, void *data) EINA_ARG_NONNULL(1);
-EAPI void eina_log_level_set(Eina_Log_Level level);
+EAPI void      eina_log_print_cb_set(Eina_Log_Print_Cb cb, void *data) EINA_ARG_NONNULL(1);
+
+EAPI void      eina_log_level_set(int level);
+EAPI int       eina_log_level_get(void) EINA_WARN_UNUSED_RESULT;
+
+static inline Eina_Bool eina_log_level_check(int level);
+
+EAPI Eina_Bool eina_log_main_thread_check(void) EINA_CONST EINA_WARN_UNUSED_RESULT;
+
+EAPI void      eina_log_color_disable_set(Eina_Bool disabled);
+EAPI Eina_Bool eina_log_color_disable_get(void) EINA_WARN_UNUSED_RESULT;
+EAPI void      eina_log_file_disable_set(Eina_Bool disabled);
+EAPI Eina_Bool eina_log_file_disable_get(void) EINA_WARN_UNUSED_RESULT;
+EAPI void      eina_log_function_disable_set(Eina_Bool disabled);
+EAPI Eina_Bool eina_log_function_disable_get(void) EINA_WARN_UNUSED_RESULT;
+EAPI void      eina_log_abort_on_critical_set(Eina_Bool abort_on_critical);
+EAPI Eina_Bool eina_log_abort_on_critical_get(void) EINA_WARN_UNUSED_RESULT;
+EAPI void      eina_log_abort_on_critical_level_set(int critical_level);
+EAPI int       eina_log_abort_on_critical_level_get(void) EINA_WARN_UNUSED_RESULT;
+
+EAPI void      eina_log_domain_level_set(const char *domain_name, int level) EINA_ARG_NONNULL(1);
+EAPI int       eina_log_domain_level_get(const char *domain_name) EINA_WARN_UNUSED_RESULT EINA_ARG_NONNULL(1);
+EAPI int       eina_log_domain_registered_level_get(int domain) EINA_WARN_UNUSED_RESULT;
+static inline Eina_Bool eina_log_domain_level_check(int domain, int level);
+
 
 /*
  * Logging domains
@@ -214,6 +302,8 @@ EAPI void eina_log_vprint(int domain, Eina_Log_Level level, const char *file, co
 EAPI void eina_log_print_cb_stdout(const Eina_Log_Domain *d, Eina_Log_Level level, const char *file, const char *fnc, int line, const char *fmt, void *data, va_list args);
 EAPI void eina_log_print_cb_stderr(const Eina_Log_Domain *d, Eina_Log_Level level, const char *file, const char *fnc, int line, const char *fmt, void *data, va_list args);
 EAPI void eina_log_print_cb_file(const Eina_Log_Domain *d, Eina_Log_Level level, const char *file, const char *fnc, int line, const char *fmt, void *data, va_list args);
+
+#include "eina_inline_log.x"
 
 /**
  * @}

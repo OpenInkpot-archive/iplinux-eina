@@ -1,9 +1,26 @@
-# get rid of that stupid cache mechanism
-rm -f config.cache
-
-AC_INIT([eina], [0.9.9.063], [enlightenment-devel@lists.sourceforge.net])
-release="ver-svn-05"
-AC_PREREQ([2.60])
+##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##
+##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##
+m4_define([v_maj], [0])
+m4_define([v_min], [9])
+m4_define([v_mic], [9])
+m4_define([v_rev], m4_esyscmd([(svnversion "${SVN_REPO_PATH:-.}" | grep -v export || echo 0) | awk -F : '{printf("%s\n", $1);}' | tr -d ' :MSP\n']))
+m4_if(v_rev, [0], [m4_define([v_rev], m4_esyscmd([git log 2> /dev/null | (grep -m1 git-svn-id || echo 0) | sed -e 's/.*@\([0-9]*\).*/\1/' | tr -d '\n']))])
+##--   When released, remove the dnl on the below line
+dnl m4_undefine([v_rev])
+##--   When doing snapshots - change soname. remove dnl on below line
+m4_define([relname], [ver-svn-06])
+m4_define([v_rel], [-release relname])
+##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##
+m4_ifdef([v_rev], [m4_define([v_ver], [v_maj.v_min.v_mic.v_rev])],
+[m4_define([v_ver], [v_maj.v_min.v_mic])])
+m4_define([lt_rev], m4_eval(v_maj + v_min))
+m4_define([lt_cur], v_mic)
+m4_define([lt_age], v_min)
+##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##
+##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##
+ 
+AC_INIT([eina], [v_ver], [enlightenment-devel@lists.sourceforge.net])
+AC_PREREQ([2.59])
 AC_CONFIG_SRCDIR([configure.ac])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CANONICAL_BUILD
@@ -19,45 +36,59 @@ define([AC_LIBTOOL_LANG_CXX_CONFIG], [:])dnl
 define([AC_LIBTOOL_LANG_F77_CONFIG], [:])dnl
 AC_PROG_LIBTOOL
 
-VMAJ=`echo $PACKAGE_VERSION | awk -F. '{printf("%s", $1);}'`
-VMIN=`echo $PACKAGE_VERSION | awk -F. '{printf("%s", $2);}'`
-VMIC=`echo $PACKAGE_VERSION | awk -F. '{printf("%s", $3);}'`
-SNAP=`echo $PACKAGE_VERSION | awk -F. '{printf("%s", $4);}'`
-version_info=`expr $VMAJ + $VMIN`":$VMIC:$VMIN"
-AC_SUBST(VMAJ)
+##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##
+##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##
+m4_ifdef([v_rev], , [m4_define([v_rev], [0])])
+m4_ifdef([v_rel], , [m4_define([v_rel], [])])
+AC_DEFINE_UNQUOTED(VMAJ, [v_maj], [Major version])
+AC_DEFINE_UNQUOTED(VMIN, [v_min], [Minor version])
+AC_DEFINE_UNQUOTED(VMIC, [v_mic], [Micro version])
+AC_DEFINE_UNQUOTED(VREV, [v_rev], [Revison])
+version_info="lt_rev:lt_cur:lt_age"
+release_info="v_rel"
 AC_SUBST(version_info)
-
+AC_SUBST(release_info)
+##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##
+##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##
+VMAJ=v_maj
+AC_SUBST(VMAJ)
 
 ### Needed information
 
 requirement_eina=""
 
 case "$host_os" in
-   mingw32ce* | cegcc*)
+   mingw32ce*)
       MODULE_ARCH="$host_os-$host_cpu"
       ;;
    *)
-      release_info="-release $release"
-      MODULE_ARCH="$host_os-$host_cpu-$release"
+      MODULE_ARCH="$host_os-$host_cpu-$relname"
       ;;
 esac
-AC_SUBST(release_info)
 AC_SUBST(MODULE_ARCH)
 AC_DEFINE_UNQUOTED(MODULE_ARCH, "${MODULE_ARCH}", "Module architecture")
+
+case "$host_os" in
+   mingw*)
+      MODULE_EXT=".dll"
+      ;;
+   *)
+      MODULE_EXT=".so"
+      ;;
+esac
+
+AC_DEFINE_UNQUOTED(SHARED_LIB_SUFFIX, "${MODULE_EXT}", [Suffix for shared objects])
 
 EFL_CHECK_CPU_MMX([have_mmx="yes"], [have_mmx="no"])
 EFL_CHECK_CPU_SSE([have_sse="yes"], [have_sse="no"])
 EFL_CHECK_CPU_SSE2([have_sse2="yes"], [have_sse2="no"])
 EFL_CHECK_CPU_ALTIVEC([have_altivec="yes"], [have_altivec="no"])
 
-EFL_CHECK_PTHREAD([have_pthread="yes"], [have_pthread="no"])
-
-if test "x${have_pthread}" = "xyes"; then
-   AC_CHECK_LIB(pthread, pthread_spin_init,
-   		[
-		  AC_DEFINE(EINA_PTHREAD_SPIN, 1, [Build eina_log lock using pthread_spin])
-		])
-fi
+EFL_CHECK_PTHREAD(["yes"],
+   [have_pthread="yes"],
+   [have_pthread="no"],
+   [have_pthread_spinlock="yes"],
+   [have_pthread_spinlock="no"])
 
 ### Additional options to configure
 
@@ -214,7 +245,7 @@ EFL_CHECK_DOXYGEN([build_doc="yes"], [build_doc="no"])
 
 EFL_EINA_BUILD=""
 case "$host_os" in
-   mingw* | cegcc*)
+   mingw*)
       PKG_CHECK_MODULES([EVIL], [evil])
       AC_DEFINE(HAVE_EVIL, 1, [Set to 1 if evil package is installed])
       requirement_eina="evil"
@@ -247,19 +278,10 @@ if test "x${enable_ememoa}" = "xyes" ; then
    )
 fi
 
-AM_CONDITIONAL(EINA_ENABLE_EMEMOA, test "x${enable_ememoa}" = "xyes")
-if test "x${enable_ememoa}" = "xyes"; then
-   AC_DEFINE(EINA_EMEMOA_SUPPORT, 1, [Use by the test suite to try ememoa mempool])
-fi
-
 ### Checks for header files
 AC_HEADER_ASSERT
 AC_HEADER_DIRENT
 AC_HEADER_TIME
-
-AC_CHECK_HEADER([fnmatch.h],
-   [dummy="yes"],
-   [AC_MSG_ERROR([Cannot find fnmatch.h. Make sure your CFLAGS environment variable contains include lines for the location of this file. MinGW users: see the INSTALL file])])
 
 ### Checks for types
 
@@ -275,52 +297,25 @@ AC_C___ATTRIBUTE__
 AC_PROG_CC_STDC
 
 EINA_CPPFLAGS=""
+EINA_CFLAGS=""
 case "$host_os" in
-   mingw32ce* | cegcc*)
+   mingw32ce*)
       EINA_CPPFLAGS="-D_WIN32_WCE=0x0420"
-      ;;
-   mingw*)
-      EINA_CPPFLAGS="-D_WIN32_WINNT=0x0500"
-      ;;
-esac
-
-EINA_CFLAGS=
-case "${host_os}" in
-   cegcc*)
-      EINA_CFLAGS="${EVIL_CFLAGS} -mwin32"
-   ;;
-   mingw*)
       EINA_CFLAGS="${EVIL_CFLAGS}"
-   ;;
+      ;;
+   mingw*)
+      EINA_CPPFLAGS="-D_WIN32_WINNT=0x0501"
+      EINA_CFLAGS="${EVIL_CFLAGS}"
+      ;;
 esac
 
-if ! test "x${VMIC}" = "x" ; then
-   CFLAGS_save="${CFLAGS}"
-   CFLAGS="${CFLAGS} -Wall -W"
-   AC_COMPILE_IFELSE(
-      [AC_LANG_PROGRAM([[]])],
-      [have_Wall="yes"],
-      [have_Wall="no"])
-   AC_MSG_CHECKING([whether the compiler supports -Wall])
-   AC_MSG_RESULT([${have_Wall}])
-   CFLAGS="${CFLAGS_save}"
-   if test "x${have_Wall}" = "xyes" ; then
-      EINA_CFLAGS="${EINA_CFLAGS} -Wall -W" # -Werror
-   fi
-fi
+m4_ifdef([v_mic],
+   [
+    EFL_COMPILER_FLAG([-Wall])
+    EFL_COMPILER_FLAG([-W])
+   ])
 
-CFLAGS_save="${CFLAGS}"
-CFLAGS="${CFLAGS} -fno-strict-aliasing"
-AC_COMPILE_IFELSE(
-   [AC_LANG_PROGRAM([[]])],
-   [have_no_strict_aliasing="yes"],
-   [have_no_strict_aliasing="no"])
-AC_MSG_CHECKING([whether the compiler supports -fno-strict-aliasing])
-AC_MSG_RESULT([${have_no_strict_aliasing}])
-CFLAGS="${CFLAGS_save}"
-if test "x${have_no_strict_aliasing}" = "xyes" ; then
-   EINA_CFLAGS="${EINA_CFLAGS} -fno-strict-aliasing"
-fi
+EFL_COMPILER_FLAG([-Wshadow])
 
 AC_SUBST(EINA_CPPFLAGS)
 AC_SUBST(EINA_CFLAGS)
@@ -330,7 +325,7 @@ AC_SUBST(EINA_CFLAGS)
 EINA_LIBS=
 lt_enable_auto_import=""
 case "${host_os}" in
-   mingw* | cegcc*)
+   mingw*)
       EINA_LIBS="-ldl ${EVIL_LIBS} -lm"
       lt_enable_auto_import="-Wl,--enable-auto-import"
    ;;
@@ -353,14 +348,17 @@ esac
 AC_SUBST(EINA_LIBS)
 AC_SUBST(lt_enable_auto_import)
 
+EFL_LINKER_FLAG([-fno-strict-aliasing])
+
 
 ### Checks for library functions
 AC_FUNC_ALLOCA
+AC_CHECK_FUNCS(strlcpy)
 
 #dlopen and dladdr
 dlopen_libs=""
 case "$host_os" in
-   mingw* | cegcc*)
+   mingw*)
 # managed by evil
       AC_DEFINE(HAVE_DLADDR)
       ;;
@@ -381,27 +379,117 @@ case "$host_os" in
 esac
 AC_SUBST(dlopen_libs)
 
-fnmatch_libs=""
-AC_CHECK_FUNCS([fnmatch], [res="yes"], [res="no"])
-if test "x$res" = "xno"; then
-   AC_SEARCH_LIBS([fnmatch],
-      [fnmatch evil iberty],
-      [res="yes"],
-      [res="no"])
-   if test "x$res" = "xno"; then
-      AC_MSG_ERROR([Cannot find fnmatch() in neither libc nor libfnmatch, nor libiberty, nor libevil])
-   fi
-   fnmatch_libs="${ac_cv_search_fnmatch}"
+EFL_CHECK_FNMATCH([], [AC_MSG_ERROR([Cannot find fnmatch()])])
+
+# iconv library
+have_iconv="no"
+AC_ARG_WITH([iconv-link],
+   AC_HELP_STRING([--with-iconv-link=ICONV_LINK], [explicitly specify an iconv link option]),
+   [
+    LIBS="$withval $LIBS"
+    have_iconv="yes"
+   ])
+
+AC_MSG_CHECKING(for explicit iconv link options)
+if test "x${iconv_libs}" = "x" ; then
+   AC_MSG_RESULT([no explicit iconv link option])
+else
+   AC_MSG_RESULT([$iconv_libs])
 fi
-AC_SUBST(fnmatch_libs)
+
+if test "x${have_iconv}" = "xno" ; then
+   AC_CHECK_HEADERS([iconv.h], [have_iconv="yes"])
+
+   if test "x${have_iconv}" = "xyes" ; then
+      AC_MSG_CHECKING([whether iconv() is in libc])
+      
+      AC_LINK_IFELSE(
+         [AC_LANG_PROGRAM(
+             [[
+#include <stdlib.h>
+#include <iconv.h>
+             ]],
+             [[
+iconv_t ic;
+size_t count = iconv(ic, NULL, NULL, NULL, NULL);
+             ]])],
+         [have_iconv="yes"],
+         [have_iconv="no"])
+
+      AC_MSG_RESULT([${have_iconv}])
+   fi
+
+   if test "x${have_iconv}" = "xno" ; then
+      AC_MSG_CHECKING([whether iconv() is in libiconv.a])
+
+      LIBS_save="${LIBS}"
+      LIBS="-liconv $LIBS"
+      AC_LINK_IFELSE(
+         [AC_LANG_PROGRAM(
+             [[
+#include <stdlib.h>
+#include <iconv.h>
+             ]],
+             [[
+iconv_t ic;
+size_t count;
+count = iconv(ic, NULL, NULL, NULL, NULL);
+             ]])],
+         [have_iconv="yes"],
+         [
+          have_iconv="no"
+          LIBS=${LIBS_save}
+         ])
+
+      AC_MSG_RESULT([${have_iconv}])
+   fi
+
+   if test "x${have_iconv}" = "xno" ; then
+      AC_MSG_CHECKING([whether iconv() is in libiconv_plug.a])
+
+      LIBS_save="${LIBS}"
+      LIBS="-liconv_plug $LIBS"
+      AC_LINK_IFELSE(
+         [AC_LANG_PROGRAM(
+             [[
+#include <stdlib.h>
+#include <iconv.h>
+             ]],
+             [[
+iconv_t ic;
+size_t count = iconv(ic, NULL, NULL, NULL, NULL);
+             ]])],
+         [have_iconv="yes"],
+         [
+          have_iconv="no"
+          LIBS=${LIBS_save}
+         ])
+
+      AC_MSG_RESULT([${have_iconv}])
+   fi
+fi
+
+if test "x${have_iconv}" = "xyes" ; then
+   AC_DEFINE([HAVE_ICONV], [1], [Set to 1 if iconv library is installed])
+fi
+
 
 ### Modules
 
-EINA_CHECK_MODULE([chained-pool], [yes], [chained pool])
-EINA_CHECK_MODULE([ememoa-fixed], [${enable_ememoa}], [ememoa fixed])
-EINA_CHECK_MODULE([ememoa-unknown], [${enable_ememoa}], [ememoa unknown])
-EINA_CHECK_MODULE([fixed-bitmap], [yes], [fixed bitmap])
-EINA_CHECK_MODULE([pass-through], [yes], [pass through])
+if test "x${have_default_mempool}" = "xyes" ; then
+   enable_chained_pool="no"
+   enable_pass_through="static"
+else
+   enable_chained_pool="static"
+   enable_pass_through="no"
+fi
+
+EINA_CHECK_MODULE([chained-pool],   [${enable_chained_pool}], [chained pool])
+EINA_CHECK_MODULE([ememoa-fixed],   [${enable_ememoa}],       [ememoa fixed])
+EINA_CHECK_MODULE([ememoa-unknown], [${enable_ememoa}],       [ememoa unknown])
+EINA_CHECK_MODULE([fixed-bitmap],   [no],                     [fixed bitmap])
+EINA_CHECK_MODULE([pass-through],   [${enable_pass_through}], [pass through])
+EINA_CHECK_MODULE([buddy],          [no],                     [buddy])
 
 
 ### Make the debug preprocessor configurable
@@ -418,8 +506,6 @@ if test "x$enable_coverage" = "xyes" ; then
 fi
 
 EFL_CHECK_BENCHMARK([enable_benchmark="yes"], [enable_benchmark="no"])
-EINA_BENCH_MODULE([evas], [${enable_benchmark}], [evas], [enable_benchmark_evas="yes"], [enable_benchmark_evas="no"])
-EINA_BENCH_MODULE([ecore], [${enable_benchmark}], [ecore], [enable_benchmark_ecore="yes"], [enable_benchmark_ecore="no"])
 EINA_BENCH_MODULE([glib], [${enable_benchmark}], [glib-2.0], [enable_benchmark_glib="yes"], [enable_benchmark_glib="no"])
 
 AC_SUBST(requirement_eina)
@@ -456,6 +542,7 @@ src/modules/mp/ememoa_fixed/Makefile
 src/modules/mp/ememoa_unknown/Makefile
 src/modules/mp/pass_through/Makefile
 src/modules/mp/fixed_bitmap/Makefile
+src/modules/mp/buddy/Makefile
 src/tests/Makefile
 ])
 
@@ -479,8 +566,9 @@ echo "  Safety checks........: ${have_safety_checks}"
 echo "  Maximum log level....: ${with_max_log_level}"
 echo "  Report string usage..: ${have_stringshare_usage}"
 echo "  Default mempool......: ${have_default_mempool}"
-echo "  Thread Support.......: ${have_pthread}"
+echo "  Thread Support.......: ${have_pthread} (spinlock: ${have_pthread_spinlock})"
 echo "  Amalgamation.........: ${do_amalgamation}"
+echo "  Iconv support........: ${have_iconv}"
 echo
 echo "  Documentation........: ${build_doc}"
 echo "  Tests................: ${enable_tests}"
@@ -488,8 +576,6 @@ echo "  Coverage.............: ${enable_coverage}"
 echo "  Benchmark............: ${enable_benchmark}"
 if test "x${enable_benchmark}" = "xyes" ; then
 echo "    Glib...............: ${enable_benchmark_glib}"
-echo "    Evas...............: ${enable_benchmark_evas}"
-echo "    Ecore..............: ${enable_benchmark_ecore}"
 echo "    E17 real data......: ${enable_benchmark_e17}"
 fi
 echo
@@ -505,6 +591,7 @@ echo "    Ememoa fixed.......: ${enable_ememoa_fixed}"
 echo "    Ememoa unknown.....: ${enable_ememoa_unknown}"
 echo "    Fixed bitmap.......: ${enable_fixed_bitmap}"
 echo "    Pass through.......: ${enable_pass_through}"
+echo "    Buddy..............: ${enable_buddy}"
 echo
 echo "Compilation............: make (or gmake)"
 echo "  CPPFLAGS.............: $CPPFLAGS"
@@ -514,10 +601,3 @@ echo
 echo "Installation...........: make install (as root if needed, with 'su' or 'sudo')"
 echo "  prefix...............: $prefix"
 echo
-if test "x${have_static_module}" = "xyes" ; then
-echo -e "\0033\01331;31mWarning\0033\01331;0m: You are trying to link statically one or more modules to Eina."
-echo "         You must know what you are doing, or else you will have a lot of problems."
-echo "         And dolphins will disappear from the earth."
-echo "         Think about that."
-echo
-fi

@@ -60,7 +60,7 @@ static int _eina_mempool_log_dom = -1;
 
 
 static Eina_Mempool *
-_new_from_buffer(const char *name, const char *context, const char *options, va_list args)
+_new_va(const char *name, const char *context, const char *options, va_list args)
 {
 	Eina_Mempool_Backend *be;
 	Eina_Mempool *mp;
@@ -113,6 +113,11 @@ Eina_Bool fixed_bitmap_init(void);
 void fixed_bitmap_shutdown(void);
 #endif
 
+#ifdef EINA_STATIC_BUILD_BUDDY
+Eina_Bool buddy_init(void);
+void buddy_shutdown(void);
+#endif
+
 /**
  * @endcond
  */
@@ -120,6 +125,18 @@ void fixed_bitmap_shutdown(void);
 /*============================================================================*
  *                                 Global                                     *
  *============================================================================*/
+
+/**
+ * @cond LOCAL
+ */
+
+EAPI Eina_Error EINA_ERROR_NOT_MEMPOOL_MODULE = 0;
+
+static const char EINA_ERROR_NOT_MEMPOOL_MODULE_STR[] = "Not a memory pool module.";
+
+/**
+ * @endcond
+ */
 
 EAPI Eina_Bool
 eina_mempool_register(Eina_Mempool_Backend *be)
@@ -137,22 +154,6 @@ eina_mempool_unregister(Eina_Mempool_Backend *be)
    eina_hash_del(_backends, be->name, be);
 }
 
-/*============================================================================*
- *                                   API                                      *
- *============================================================================*/
-
-/**
- * @addtogroup Eina_Memory_Pool_Group Memory Pool
- *
- * @brief These functions provide memory pool management.
- *
- * @{
- */
-
-EAPI Eina_Error EINA_ERROR_NOT_MEMPOOL_MODULE = 0;
-
-static const char EINA_ERROR_NOT_MEMPOOL_MODULE_STR[] = "Not a memory pool module.";
-
 Eina_Bool
 eina_mempool_init(void)
 {
@@ -169,18 +170,18 @@ eina_mempool_init(void)
    _backends = eina_hash_string_superfast_new(NULL);
 
    /* dynamic backends */
-   _modules = eina_module_list_get(NULL, PACKAGE_LIB_DIR "/eina/mp/", 0, NULL, NULL);
+   _modules = eina_module_arch_list_get(NULL, PACKAGE_LIB_DIR "/eina/modules/mp", MODULE_ARCH);
 
-   path = eina_module_environment_path_get("HOME", "/.eina/mp/");
-   _modules = eina_module_list_get(_modules, path, 0, NULL, NULL);
+   path = eina_module_environment_path_get("HOME", "/.eina/mp/modules/mp");
+   _modules = eina_module_arch_list_get(_modules, path, MODULE_ARCH);
    if (path) free(path);
 
-   path = eina_module_environment_path_get("EINA_MODULES_MEMPOOL_DIR", "/eina/mp/");
-   _modules = eina_module_list_get(_modules, path, 0, NULL, NULL);
+   path = eina_module_environment_path_get("EINA_MODULES_MEMPOOL_DIR", "/eina/modules/mp");
+   _modules = eina_module_arch_list_get(_modules, path, MODULE_ARCH);
    if (path) free(path);
 
-   path = eina_module_symbol_path_get(eina_init, "/eina/mp/");
-   _modules = eina_module_list_get(_modules, path, 0, NULL, NULL);
+   path = eina_module_symbol_path_get((const void *)eina_init, "/eina/modules/mp");
+   _modules = eina_module_arch_list_get(_modules, path, MODULE_ARCH);
    if (path) free(path);
 
    if (!_modules)
@@ -190,6 +191,7 @@ eina_mempool_init(void)
 	goto mempool_init_error;
      }
    eina_module_list_load(_modules);
+   
    /* builtin backends */
 #ifdef EINA_STATIC_BUILD_CHAINED_POOL
    chained_init();
@@ -205,6 +207,9 @@ eina_mempool_init(void)
 #endif
 #ifdef EINA_STATIC_BUILD_FIXED_BITMAP
    fixed_bitmap_init();
+#endif
+#ifdef EINA_STATIC_BUILD_BUDDY
+   buddy_init();
 #endif
 
    return EINA_TRUE;
@@ -235,8 +240,11 @@ eina_mempool_shutdown(void)
 #ifdef EINA_STATIC_BUILD_FIXED_BITMAP
    fixed_bitmap_shutdown();
 #endif
+#ifdef EINA_STATIC_BUILD_BUDDY
+   buddy_shutdown();
+#endif
    /* dynamic backends */
-   eina_module_list_flush(_modules);
+   eina_module_list_free(_modules);
    if (_modules)
      eina_array_free(_modules);
 
@@ -249,6 +257,43 @@ eina_mempool_shutdown(void)
    return EINA_TRUE;
 }
 
+/*============================================================================*
+ *                                   API                                      *
+ *============================================================================*/
+
+/**
+ * @addtogroup Eina_Memory_Pool_Group Memory Pool
+ *
+ * @brief These functions provide memory pool management.
+ *
+ * Several mempool are available:
+ *
+ * @li @c buddy: It uses the
+ * <a href="http://en.wikipedia.org/wiki/Buddy_memory_allocation">"buddy
+ * allocator" algorithm</a> but the Eina implementation differs in the
+ * sense that the chunk information is not stored on the chunk itself,
+ * but on another memory area. This is useful for cases where the
+ * memory to manage might be slower to access, or limited (like video
+ * memory).
+ * @li @c chained_pool: It is the default one. It allocates a big
+ * chunk of memory with malloc() and split the result in chunks of the
+ * requested size that are pushed inside a stack. When requested, it
+ * takes this pointer from the stack to give them to whoever wants
+ * them.
+ * @li @c ememoa_fixed and @c ememoa_unknown: experimental allocators
+ * which could be useful when a fixed amount of memory is needed.
+ * @li @c fixed_bitmap: It allocates with malloc) 32* the requested
+ * size and push the pool pointer in an rbtree. To find empty space in
+ * a pool, it will just search for the first bit set in an int (32
+ * bits). Then, when a pointer is freed, it will do a search inside
+ * the rbtree.
+ * @li @c pass_through: it just call malloc() and free(). It may be
+ * faster on some computers than using our own allocators (like having
+ * a huge L2 cache, over 4MB).
+ *
+ * @{
+ */
+
 EAPI Eina_Mempool *
 eina_mempool_add(const char *name, const char *context, const char *options, ...)
 {
@@ -260,7 +305,7 @@ eina_mempool_add(const char *name, const char *context, const char *options, ...
 	    name, context ? context : "", options ? options : "");
 
 	va_start(args, options);
-	mp = _new_from_buffer(name, context, options, args);
+	mp = _new_va(name, context, options, args);
 	va_end(args);
 
 	DBG("name=%s, context=%s, options=%s, mp=%p",

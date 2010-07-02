@@ -105,7 +105,7 @@ static const char EINA_MAGIC_LIST_ACCOUNTING_STR[] = "Eina List Accounting";
         EINA_MAGIC_FAIL(d, EINA_MAGIC_LIST);			\
         return __VA_ARGS__;					\
     }								\
-  } while(0);
+  } while(0)
 
 #define EINA_MAGIC_CHECK_LIST_ITERATOR(d, ...)			\
   do {								\
@@ -114,7 +114,7 @@ static const char EINA_MAGIC_LIST_ACCOUNTING_STR[] = "Eina List Accounting";
         EINA_MAGIC_FAIL(d, EINA_MAGIC_LIST_ITERATOR);		\
         return __VA_ARGS__;					\
     }								\
-  } while(0);
+  } while(0)
 
 #define EINA_MAGIC_CHECK_LIST_ACCESSOR(d, ...)			\
   do {								\
@@ -123,7 +123,7 @@ static const char EINA_MAGIC_LIST_ACCOUNTING_STR[] = "Eina List Accounting";
         EINA_MAGIC_FAIL(d, EINA_MAGIC_LIST_ACCESSOR);		\
         return __VA_ARGS__;					\
     }								\
-  } while(0);
+  } while(0)
 
 #define EINA_MAGIC_CHECK_LIST_ACCOUNTING(d)			\
   do {								\
@@ -132,7 +132,7 @@ static const char EINA_MAGIC_LIST_ACCOUNTING_STR[] = "Eina List Accounting";
         EINA_MAGIC_FAIL(d, EINA_MAGIC_LIST_ACCOUNTING);		\
         return;							\
     }								\
-  } while(0);
+  } while(0)
 
 #define EINA_LIST_SORT_STACK_SIZE 32
 
@@ -307,7 +307,7 @@ eina_list_iterator_free(Eina_Iterator_List *it)
 }
 
 static Eina_Bool
-eina_list_accessor_get_at(Eina_Accessor_List *it, unsigned int index, void **data)
+eina_list_accessor_get_at(Eina_Accessor_List *it, unsigned int idx, void **data)
 {
    const Eina_List *over;
    unsigned int middle;
@@ -315,22 +315,22 @@ eina_list_accessor_get_at(Eina_Accessor_List *it, unsigned int index, void **dat
 
    EINA_MAGIC_CHECK_LIST_ACCESSOR(it, EINA_FALSE);
 
-   if (index >= eina_list_count(it->head)) return EINA_FALSE;
+   if (idx >= eina_list_count(it->head)) return EINA_FALSE;
 
-   if (it->index == index)
+   if (it->index == idx)
      {
 	over = it->current;
      }
-   else if (index > it->index)
+   else if (idx > it->index)
      {
 	/* After current position. */
 	middle = ((eina_list_count(it->head) - it->index) >> 1) + it->index;
 
-	if (index > middle)
+	if (idx > middle)
 	  {
 	     /* Go backward from the end. */
 	     for (i = eina_list_count(it->head) - 1, over = eina_list_last(it->head);
-		  i > index && over != NULL;
+		  i > idx && over != NULL;
 		  --i, over = eina_list_prev(over))
 	       ;
 	  }
@@ -338,7 +338,7 @@ eina_list_accessor_get_at(Eina_Accessor_List *it, unsigned int index, void **dat
 	  {
 	     /* Go forward from current. */
 	     for (i = it->index, over = it->current;
-		  i < index && over != NULL;
+		  i < idx && over != NULL;
 		  ++i, over = eina_list_next(over))
 	       ;
 	  }
@@ -348,11 +348,11 @@ eina_list_accessor_get_at(Eina_Accessor_List *it, unsigned int index, void **dat
 	/* Before current position. */
 	middle = it->index >> 1;
 
-	if (index > middle)
+	if (idx > middle)
 	  {
 	     /* Go backward from current. */
 	     for (i = it->index, over = it->current;
-		  i > index && over != NULL;
+		  i > idx && over != NULL;
 		  --i, over = eina_list_prev(over))
 	       ;
 	  }
@@ -360,7 +360,7 @@ eina_list_accessor_get_at(Eina_Accessor_List *it, unsigned int index, void **dat
 	  {
 	     /* Go forward from start. */
 	     for (i = 0, over = it->head;
-		  i < index && over != NULL;
+		  i < idx && over != NULL;
 		  ++i, over = eina_list_next(over))
 	       ;
 	  }
@@ -369,7 +369,7 @@ eina_list_accessor_get_at(Eina_Accessor_List *it, unsigned int index, void **dat
    if (over == NULL) return EINA_FALSE;
 
    it->current = over;
-   it->index = index;
+   it->index = idx;
 
    *data = eina_list_data_get(it->current);
    return EINA_TRUE;
@@ -435,20 +435,6 @@ eina_list_sort_merge(Eina_List *a, Eina_List *b, Eina_Compare_Cb func)
 /*============================================================================*
  *                                 Global                                     *
  *============================================================================*/
-
-/*============================================================================*
- *                                   API                                      *
- *============================================================================*/
-
-/**
- * @addtogroup Eina_List_Group List
- *
- * @brief These functions provide double linked list management.
- *
- * For more information, you can look at the @ref tutorial_list_page.
- *
- * @{
- */
 
 /**
  * @internal
@@ -538,6 +524,20 @@ eina_list_shutdown(void)
    _eina_list_log_dom = -1;
    return EINA_TRUE;
 }
+
+/*============================================================================*
+ *                                   API                                      *
+ *============================================================================*/
+
+/**
+ * @addtogroup Eina_List_Group List
+ *
+ * @brief These functions provide double linked list management.
+ *
+ * For more information, you can look at the @ref tutorial_list_page.
+ *
+ * @{
+ */
 
 /**
  * @brief Append the given data to the given linked list.
@@ -848,6 +848,7 @@ eina_list_prepend_relative_list(Eina_List *list, const void *data, Eina_List *re
  * @brief Insert a new node into a sorted list.
  *
  * @param list The given linked list, @b must be sorted.
+ * @param func The function called for the sort.
  * @param data The data to insert sorted.
  * @return A list pointer.
  *
@@ -857,7 +858,7 @@ eina_list_prepend_relative_list(Eina_List *list, const void *data, Eina_List *re
  * used in place of the one given to this function is
  * returned. Otherwise, the old pointer is returned. See eina_error_get().
  *
- * @note O(log2(n)) comparisons (calls to func) average/worst case
+ * @note O(log2(n)) comparisons (calls to @p func) average/worst case
  * performance as it uses eina_list_search_sorted_near_list() and thus
  * is bounded to that. As said in eina_list_search_sorted_near_list(),
  * lists do not have O(1) access time, so walking to the correct node
@@ -1240,71 +1241,6 @@ eina_list_nth_list(const Eina_List *list, unsigned int n)
 }
 
 /**
- * @brief Get the last list node in the list.
- *
- * @param list The list to get the last list node from.
- * @return The last list node in the list.
- *
- * This function returns the last list node in the list. If @p list is
- * @c NULL or empty, @c NULL is returned.
- *
- * This is a order-1 operation (it takes the same short time
- * regardless of the length of the list).
- */
-static inline Eina_List *eina_list_last(const Eina_List *list);
-
-/**
- * @brief Get the next list node after the specified list node.
- *
- * @param list The list node to get the next list node from
- * @return The next list node on success, @c NULL otherwise.
- *
- * This function returns the next list node after the current one in
- * @p list. It is equivalent to list->next. If @p list is @c NULL or
- * if no next list node exists, it returns @c NULL.
- */
-static inline Eina_List *eina_list_next(const Eina_List *list);
-
-/**
- * @brief Get the previous list node before the specified list node.
- *
- * @param list The list node to get the previous list node from.
- * @return The previous list node o success, @c NULL otherwise.
- * if no previous list node exists
- *
- * This function returns the previous list node before the current one
- * in @p list. It is equivalent to list->prev. If @p list is @c NULL or
- * if no previous list node exists, it returns @c NULL.
- */
-static inline Eina_List *eina_list_prev(const Eina_List *list);
-
-/**
- * @brief Get the list node data member.
- *
- * @param list The list node to get the data member of.
- * @return The data member from the list node.
- *
- * This function returns the data member of the specified list node @p
- * list. It is equivalent to list->data. If @p list is @c NULL, this
- * function returns @c NULL.
- */
-static inline void *eina_list_data_get(const Eina_List *list);
-
-/**
- * @brief Get the count of the number of items in a list.
- *
- * @param list The list whose count to return.
- * @return The number of members in the list.
- *
- * This function returns how many members @p list contains. If the
- * list is @c NULL, 0 is returned.
- *
- * NB: This is an order-1 operation and takes the same tiem regardless
- * of the length of the list.
- */
-static inline unsigned int eina_list_count(const Eina_List *list);
-
-/**
  * @brief Reverse all the elements in the list.
  *
  * @param list The list to reverse.
@@ -1366,18 +1302,18 @@ EAPI Eina_List *
 eina_list_reverse_clone(const Eina_List *list)
 {
    const Eina_List *l;
-   Eina_List *clone;
+   Eina_List *lclone;
    void *data;
 
    if (!list) return NULL;
 
    EINA_MAGIC_CHECK_LIST(list, NULL);
 
-   clone = NULL;
+   lclone = NULL;
    EINA_LIST_FOREACH(list, l, data)
-     clone = eina_list_prepend(clone, data);
+     lclone = eina_list_prepend(lclone, data);
 
-   return clone;
+   return lclone;
 }
 
 /**
@@ -1399,18 +1335,18 @@ EAPI Eina_List *
 eina_list_clone(const Eina_List *list)
 {
    const Eina_List *l;
-   Eina_List *clone;
+   Eina_List *lclone;
    void *data;
 
    if (!list) return NULL;
 
    EINA_MAGIC_CHECK_LIST(list, NULL);
 
-   clone = NULL;
+   lclone = NULL;
    EINA_LIST_FOREACH(list, l, data)
-     clone = eina_list_append(clone, data);
+     lclone = eina_list_append(lclone, data);
 
-   return clone;
+   return lclone;
 }
 
 /**

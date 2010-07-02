@@ -28,19 +28,14 @@
 # include <glib.h>
 #endif
 
-#ifdef EINA_BENCH_HAVE_EVAS
-# include <Evas.h>
-#endif
-
-#ifdef EINA_BENCH_HAVE_ECORE
-# include <Ecore.h>
-# include <Ecore_Data.h>
-#endif
+#include "Evas_Data.h"
+#include "Ecore_Data.h"
 
 #include "eina_bench.h"
 #include "eina_array.h"
 #include "eina_list.h"
 #include "eina_inlist.h"
+#include "eina_main.h"
 
 typedef struct _Eina_Bench_Object Eina_Bench_Object;
 struct _Eina_Bench_Object
@@ -560,8 +555,6 @@ eina_bench_gptrarray_4evas_render(int request)
 }
 #endif
 
-#ifdef EINA_BENCH_HAVE_EVAS
-#if 0
 static void
 eina_bench_evas_list_4evas_render(int request)
 {
@@ -570,8 +563,6 @@ eina_bench_evas_list_4evas_render(int request)
    Eina_Bench_Object *ebo;
    int i;
    int j;
-
-   evas_init();
 
    for (i = 0; i < 1000; ++i)
      {
@@ -627,14 +618,8 @@ eina_bench_evas_list_4evas_render(int request)
 	free(evas_list_data(list));
 	list = evas_list_remove_list(list, list);
      }
-
-   evas_shutdown();
 }
-#endif
-#endif
 
-#ifdef EINA_BENCH_HAVE_ECORE
-#if 0
 static void
 _eina_ecore_for_each_remove(void *value, void *user_data)
 {
@@ -661,7 +646,6 @@ eina_bench_ecore_list_4evas_render(int request)
    int i;
    int j;
 
-   ecore_init();
    list = ecore_list_new();
    ecore_list_free_cb_set(list, free);
 
@@ -693,11 +677,7 @@ eina_bench_ecore_list_4evas_render(int request)
      }
 
    ecore_list_destroy(list);
-
-   ecore_shutdown();
 }
-#endif
-#endif
 
 void eina_bench_array(Eina_Benchmark *bench)
 {
@@ -711,15 +691,7 @@ void eina_bench_array(Eina_Benchmark *bench)
    eina_benchmark_register(bench, "glist", EINA_BENCHMARK(eina_bench_glist_4evas_render), 200, 4000, 100);
    eina_benchmark_register(bench, "gptrarray", EINA_BENCHMARK(eina_bench_gptrarray_4evas_render), 200, 4000, 100);
 #endif
-#ifdef EINA_BENCH_HAVE_EVAS
-#if 0
    eina_benchmark_register(bench, "evas", EINA_BENCHMARK(eina_bench_evas_list_4evas_render), 200, 4000, 100);
-#endif
-#endif
-#ifdef EINA_BENCH_HAVE_ECORE
-#if 0
-   eina_benchmark_register(bench, "ecore", EINA_BENCHMARK(eina_bench_ecore_list_4evas_render), 200, 4000, 100);
-#endif
-#endif
+   eina_benchmark_register(bench, "ecore", EINA_BENCHMARK(eina_bench_ecore_list_4evas_render), 200, 1000, 100);
 }
 

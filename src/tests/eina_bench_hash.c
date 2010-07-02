@@ -29,13 +29,8 @@
 # include <glib.h>
 #endif
 
-#ifdef EINA_BENCH_HAVE_EVAS
-# include <Evas.h>
-#endif
-
-#ifdef EINA_BENCH_HAVE_ECORE
-# include <Ecore_Data.h>
-#endif
+#include "Evas_Data.h"
+#include "Ecore_Data.h"
 
 #include "eina_hash.h"
 #include "eina_array.h"
@@ -76,7 +71,6 @@ static void
 eina_bench_lookup_rbtree(int request)
 {
    Eina_Rbtree *root = NULL;
-   Eina_Rbtree *tmp;
    int i;
    int j;
 
@@ -98,6 +92,7 @@ eina_bench_lookup_rbtree(int request)
    for (j = 0; j < 200; ++j)
      for (i = 0; i < request; ++i)
        {
+	  Eina_Rbtree *tmp;
 	  char tmp_key[10];
 
 	  eina_convert_itoa(rand() % request, tmp_key);
@@ -280,8 +275,6 @@ eina_bench_lookup_ghash(int request)
 }
 #endif
 
-#ifdef EINA_BENCH_HAVE_EVAS
-#if 0
 static void
 eina_bench_lookup_evas(int request)
 {
@@ -300,7 +293,7 @@ eina_bench_lookup_evas(int request)
 
 	tmp_val = malloc(sizeof (int));
 
-	if (!tmp_key || !tmp_val) continue ;
+	if (!tmp_val) continue ;
 
 	eina_convert_itoa(i, tmp_key);
 	*tmp_val = i;
@@ -329,10 +322,7 @@ eina_bench_lookup_evas(int request)
 
    eina_array_free(array);
 }
-#endif
-#endif
 
-#ifdef EINA_BENCH_HAVE_ECORE
 typedef struct _Eina_Bench_Ecore Eina_Bench_Ecore;
 struct _Eina_Bench_Ecore
 {
@@ -379,7 +369,6 @@ eina_bench_lookup_ecore(int request)
 
    ecore_hash_destroy(hash);
 }
-#endif
 
 void eina_bench_hash(Eina_Benchmark *bench)
 {
@@ -390,12 +379,6 @@ void eina_bench_hash(Eina_Benchmark *bench)
 #ifdef EINA_BENCH_HAVE_GLIB
    eina_benchmark_register(bench, "ghash-lookup", EINA_BENCHMARK(eina_bench_lookup_ghash), 10, 3000, 10);
 #endif
-#ifdef EINA_BENCH_HAVE_EVAS
-#if 0
    eina_benchmark_register(bench, "evas-lookup", EINA_BENCHMARK(eina_bench_lookup_evas), 10, 3000, 10);
-#endif
-#endif
-#ifdef EINA_BENCH_HAVE_ECORE
    eina_benchmark_register(bench, "ecore-lookup", EINA_BENCHMARK(eina_bench_lookup_ecore), 10, 3000, 10);
-#endif
 }

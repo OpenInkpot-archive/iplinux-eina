@@ -84,10 +84,6 @@ static inline void reverse(char s[], int length)
  *                                 Global                                     *
  *============================================================================*/
 
-/*============================================================================*
- *                                   API                                      *
- *============================================================================*/
-
 /**
  * @cond LOCAL
  */
@@ -102,124 +98,6 @@ static const char EINA_ERROR_CONVERT_OUTRUN_STRING_LENGTH_STR[] = "Error outrun 
 
 /**
  * @endcond
- */
-
-/**
- * @addtogroup Eina_Convert_Group Convert
- *
- * These functions allow you to convert integer or real numbers to
- * string or conversely.
- *
- * To use these functions, you have to call eina_init()
- * first, and eina_shutdown() when eina is not used anymore.
- *
- * @section Eina_Convert_From_Integer_To_Sring Conversion from integer to string
- *
- * To convert an integer to a string in the decimal base,
- * eina_convert_itoa() should be used. If the hexadecimal base is
- * wanted, eina_convert_xtoa() should be used. They all need a bufffer
- * sufficiently large to store all the cyphers.
- *
- * Here is an exemple of use:
- *
- * @code
- * #include <stdlib.h>
- * #include <stdio.h>
- *
- * #include <eina_convert.h>
- *
- * int main(void)
- * {
- *    char *tmp[128];
- *
- *    if (!eina_init())
- *    {
- *        printf ("Error during the initialization of eina.\n");
- *        return EXIT_FAILURE;
- *    }
- *
- *    eina_convert_itoa(45, tmp);
- *    printf("value: %s\n", tmp);
-
- *    eina_convert_xtoa(0xA1, tmp);
- *    printf("value: %s\n", tmp);
- *
- *    eina_shutdown();
- *
- *    return EXIT_SUCCESS;
- * }
- * @endcode
- *
- * Compile this code with the following commant:
- *
- * @code
- * gcc -Wall -o test_eina_convert test_eina.c `pkg-config --cflags --libs eina`
- * @endcode
- *
- * @note
- * The alphabetical cyphers are in lower case.
- *
- * @section Eina_Convert_Double Conversion double / string
- *
- * To convert a double to a string, eina_convert_dtoa() should be
- * used. Like with the integer functions, a buffer must be used. The
- * resulting string ghas the following format (which is the result
- * obtained with snprintf() and the @%a modifier):
- *
- * @code
- * [-]0xh.hhhhhp[+-]e
- * @endcode
- *
- * To convert a string to a double, eina_convert_atod() should be
- * used. The format of the string must be as above. Then, the double
- * has the following mantiss and exponent:
- *
- * @code
- * mantiss  : [-]hhhhhh
- * exponent : 2^([+-]e - 4 * n)
- * @endcode
- *
- * with n being number of cypers after the point in the string
- * format. To obtain the double number from the mantiss and exponent,
- * use ldexp().
- *
- * Here is an exemple of use:
- *
- * @code
- * #include <stdlib.h>
- * #include <stdio.h>
- *
- * #include <eina_convert.h>
- *
- * int main(void)
- * {
- *    char     *tmp[128];
- *    long long int m = 0;
- *    long int  e = 0;
- *    doule     r;
- *
- *    if (!eina_init())
- *    {
- *        printf ("Error during the initialization of eina.\n");
- *        return EXIT_FAILURE;
- *    }
- *
- *    eina_convert_dtoa(40.56, tmp);
- *    printf("value: %s\n", tmp);
-
- *    eina_convert_atod(tmp, 128, &m, &e);
- *    r = ldexp((double)m, e);
- *    printf("value: %s\n", tmp);
- *
- *    eina_shutdown();
- *
- *    return EXIT_SUCCESS;
- * }
- * @endcode
- *
- * Compile this code with the same command as above.
- *
- * @{
  */
 
 /**
@@ -275,6 +153,134 @@ eina_convert_shutdown(void)
    _eina_convert_log_dom = -1;
    return EINA_TRUE;
 }
+
+/*============================================================================*
+ *                                   API                                      *
+ *============================================================================*/
+
+/**
+ * @addtogroup Eina_Convert_Group Convert
+ *
+ * These functions allow you to convert integer or real numbers to
+ * string or conversely.
+ *
+ * To use these functions, you have to call eina_init()
+ * first, and eina_shutdown() when eina is not used anymore.
+ *
+ * @section Eina_Convert_From_Integer_To_Sring Conversion from integer to string
+ *
+ * To convert an integer to a string in the decimal base,
+ * eina_convert_itoa() should be used. If the hexadecimal base is
+ * wanted, eina_convert_xtoa() should be used. They all need a bufffer
+ * sufficiently large to store all the cyphers.
+ *
+ * Here is an exemple of use:
+ *
+ * @code
+ * #include <stdlib.h>
+ * #include <stdio.h>
+ *
+ * #include <Eina.h>
+ *
+ * int main(void)
+ * {
+ *    char tmp[128];
+ *
+ *    if (!eina_init())
+ *    {
+ *        printf ("Error during the initialization of eina.\n");
+ *        return EXIT_FAILURE;
+ *    }
+ *
+ *    eina_convert_itoa(45, tmp);
+ *    printf("value: %s\n", tmp);
+
+ *    eina_convert_xtoa(0xA1, tmp);
+ *    printf("value: %s\n", tmp);
+ *
+ *    eina_shutdown();
+ *
+ *    return EXIT_SUCCESS;
+ * }
+ * @endcode
+ *
+ * Compile this code with the following command:
+ *
+ * @code
+ * gcc -Wall -o test_eina_convert test_eina.c `pkg-config --cflags --libs eina-0`
+ * @endcode
+ *
+ * @note
+ * The alphabetical cyphers are in lower case.
+ *
+ * @section Eina_Convert_Double Conversion double / string
+ *
+ * To convert a double to a string, eina_convert_dtoa() should be
+ * used. Like with the integer functions, a buffer must be used. The
+ * resulting string ghas the following format (which is the result
+ * obtained with snprintf() and the @%a modifier):
+ *
+ * @code
+ * [-]0xh.hhhhhp[+-]e
+ * @endcode
+ *
+ * To convert a string to a double, eina_convert_atod() should be
+ * used. The format of the string must be as above. Then, the double
+ * has the following mantiss and exponent:
+ *
+ * @code
+ * mantiss  : [-]hhhhhh
+ * exponent : 2^([+-]e - 4 * n)
+ * @endcode
+ *
+ * with n being number of cypers after the point in the string
+ * format. To obtain the double number from the mantiss and exponent,
+ * use ldexp().
+ *
+ * Here is an exemple of use:
+ *
+ * @code
+ * #include <stdlib.h>
+ * #include <stdio.h>
+ * #include <math.h>
+ *
+ * #include <Eina.h>
+ *
+ * int main(void)
+ * {
+ *    char      tmp[128];
+ *    long long int m = 0;
+ *    long int  e = 0;
+ *    double    r;
+ *
+ *    if (!eina_init())
+ *    {
+ *        printf ("Error during the initialization of eina.\n");
+ *        return EXIT_FAILURE;
+ *    }
+ *
+ *    printf("initial value : 40.56\n");
+ *    eina_convert_dtoa(40.56, tmp);
+ *    printf("result dtoa   : %s\n", tmp);
+
+ *    eina_convert_atod(tmp, 128, &m, &e);
+ *    r = ldexp((double)m, e);
+ *    printf("result atod   : %f\n", r);
+ *
+ *    eina_shutdown();
+ *
+ *    return EXIT_SUCCESS;
+ * }
+ * @endcode
+ *
+ * Compile this code with the following command:
+ *
+ * @code
+ * gcc -Wall -o test_eina_convert test_eina.c `pkg-config --cflags --libs eina-0` -lm
+ * @endcode
+ *
+ * @{
+ */
 
 /*
  * Come from the second edition of The C Programming Language ("K&R2") on page 64
@@ -581,7 +587,7 @@ eina_convert_dtoa(double d, char *des)
  * @param des The destination buffer to store the converted fixed point number.
  * @return #EINA_TRUE on success, #EINA_FALSE otherwise.
  *
- * This function converts the 32.32 fixed point number @fp to a
+ * This function converts the 32.32 fixed point number @p fp to a
  * string. The string is stored in the buffer pointed by @p des and
  * must be sufficiently large to contain the converted fixed point
  * number. The returned string is terminated and has the following
@@ -747,7 +753,7 @@ eina_convert_atofp(const char *src, int length, Eina_F32p32 *fp)
    e += 32;
 
    if (e > 0) *fp = m << e;
-   else *fp = m >> e;
+   else *fp = m >> -e;
 
    return EINA_TRUE;
 }

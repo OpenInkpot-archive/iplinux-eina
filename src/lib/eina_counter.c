@@ -144,6 +144,54 @@ _eina_counter_asiprintf(char *base, int *position, const char *format, ...)
  *                                 Global                                     *
  *============================================================================*/
 
+/**
+ * @internal
+ * @brief Initialize the eina counter internal structure.
+ *
+ * @return #EINA_TRUE on success, #EINA_FALSE on failure.
+ *
+ * This function shuts down the counter module set up by
+ * eina_counter_init(). It is called by eina_init().
+ *
+ * This function sets up the error module of Eina and only on Windows,
+ * it initializes the high precision timer. It also registers, only on
+ * Windows, the error #EINA_ERROR_COUNTER_WINDOWS. It is also called
+ * by eina_init(). It returns 0 on failure, otherwise it returns the
+ * number of times it has already been called.
+ *
+ * @see eina_init()
+ */
+Eina_Bool
+eina_counter_init(void)
+{
+#ifdef _WIN32
+   EINA_ERROR_COUNTER_WINDOWS = eina_error_msg_static_register(EINA_ERROR_COUNTER_WINDOWS_STR);
+   if (!QueryPerformanceFrequency(&_eina_counter_frequency))
+     {
+	eina_error_set(EINA_ERROR_COUNTER_WINDOWS);
+	return EINA_FALSE;
+     }
+#endif /* _WIN2 */
+   return EINA_TRUE;
+}
+
+/**
+ * @internal
+ * @brief Shut down the counter module.
+ *
+ * @return #EINA_TRUE on success, #EINA_FALSE on failure.
+ *
+ * This function shuts down the counter module set up by
+ * eina_counter_init(). It is called by eina_shutdown().
+ *
+ * @see eina_shutdown()
+ */
+Eina_Bool
+eina_counter_shutdown(void)
+{
+   return EINA_TRUE;
+}
+
 /*============================================================================*
  *                                   API                                      *
  *============================================================================*/
@@ -202,7 +250,9 @@ _eina_counter_asiprintf(char *base, int *position, const char *format, ...)
  *    test_malloc();
  *    eina_counter_stop(counter, 1);
  *
- *    eina_counter_dump(counter);
+ *    char* result = eina_counter_dump(counter);
+ *    printf("%s", result);
+ *    free(result);
  *
  *    eina_counter_free(counter);
  *    eina_shutdown();
@@ -213,69 +263,21 @@ _eina_counter_asiprintf(char *base, int *position, const char *format, ...)
  *
  * Compile this code with the following commant:
  *
- * @code
+ * @verbatim
  * gcc -Wall -o test_eina_counter test_eina.c `pkg-config --cflags --libs eina`
- * @endcode
+ * @endverbatim
  *
  * The result should be something like that:
  *
- * @code
- * # specimen	experiment time	starting time	ending time
- * 1	9794125	783816	10577941
- * @endcode
+ * @verbatim
+ * \# specimen    experiment time    starting time    ending time
+ * 1              9794125            783816           10577941
+ * @endverbatim
  *
  * Note that the displayed time is in nanosecond.
  *
  * @{
  */
-
-/**
- * @internal
- * @brief Initialize the eina counter internal structure.
- *
- * @return #EINA_TRUE on success, #EINA_FALSE on failure.
- *
- * This function shuts down the counter module set up by
- * eina_counter_init(). It is called by eina_init().
- *
- * This function sets up the error module of Eina and only on Windows,
- * it initializes the high precision timer. It also registers, only on
- * Windows, the error #EINA_ERROR_COUNTER_WINDOWS. It is also called
- * by eina_init(). It returns 0 on failure, otherwise it returns the
- * number of times it has already been called.
- *
- * @see eina_init()
- */
-Eina_Bool
-eina_counter_init(void)
-{
-#ifdef _WIN32
-   EINA_ERROR_COUNTER_WINDOWS = eina_error_msg_static_register(EINA_ERROR_COUNTER_WINDOWS_STR);
-   if (!QueryPerformanceFrequency(&_eina_counter_frequency))
-     {
-	eina_error_set(EINA_ERROR_COUNTER_WINDOWS);
-	return EINA_FALSE;
-     }
-#endif /* _WIN2 */
-   return EINA_TRUE;
-}
-
-/**
- * @internal
- * @brief Shut down the counter module.
- *
- * @return #EINA_TRUE on success, #EINA_FALSE on failure.
- *
- * This function shuts down the counter module set up by
- * eina_counter_init(). It is called by eina_shutdown().
- *
- * @see eina_shutdown()
- */
-Eina_Bool
-eina_counter_shutdown(void)
-{
-   return EINA_TRUE;
-}
 
 /**
  * @brief Return a counter.
@@ -331,10 +333,10 @@ eina_counter_free(Eina_Counter *counter)
 
    while (counter->clocks)
      {
-	Eina_Clock *clock = (Eina_Clock *) counter->clocks;
+	Eina_Clock *clk = (Eina_Clock *) counter->clocks;
 
 	counter->clocks = eina_inlist_remove(counter->clocks, counter->clocks);
-	free(clock);
+	free(clk);
      }
 
    free(counter);
@@ -415,14 +417,15 @@ eina_counter_stop(Eina_Counter *counter, int specimen)
  * @return A string with a summary of the test.
  * @param counter The counter.
  *
- * This function dump all the valid clocks of @p counter to the stream
- * @p out. If @p counter or @p out are @c NULL, the functions exits
+ * This function returns an malloc'd string containing the dump of
+ * all the valid clocks of @p counter.
+ * If @p counter @c NULL, the functions exits
  * immediatly. Otherwise, the output is formattted like that:
  *
- * @code
+ * @verbatim
  * \# specimen    experiment time    starting time    ending time
  * 1              208                120000           120208
- * @endcode
+ * @endverbatim
  *
  * The unit of time is the nanosecond.
 */

@@ -33,6 +33,7 @@ struct _Eina_Test_Case
 };
 
 static const Eina_Test_Case etc[] = {
+  { "FixedPoint", eina_test_fp },
   { "Array", eina_test_array },
   { "String Share", eina_test_stringshare },
   { "Log", eina_test_log },
@@ -55,6 +56,9 @@ static const Eina_Test_Case etc[] = {
   { "Rectangle", eina_test_rectangle },
   { "Matrix Sparse", eina_test_matrixsparse },
   { "Eina Tiler", eina_test_tiler },
+  { "Eina Strbuf", eina_test_strbuf },
+  { "String", eina_test_str },
+  { "QuadTree", eina_test_quadtree },
   { NULL, NULL }
 };
 
@@ -96,6 +100,7 @@ eina_build_suite(int argc, const char **argv)
 	etc[i].build(tc);
 
 	suite_add_tcase(s, tc);
+	tcase_set_timeout(tc, 0);
      }
 
    return s;
@@ -115,7 +120,7 @@ static void _mempool_init(void)
 
 static void _mempool_shutdown(void)
 {
-   eina_module_list_flush(_modules);
+   eina_module_list_free(_modules);
    /* TODO delete the list */
    eina_shutdown();
 }

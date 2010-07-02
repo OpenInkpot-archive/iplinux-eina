@@ -142,7 +142,7 @@ static const char EINA_MAGIC_ARRAY_ACCESSOR_STR[] = "Eina Array Accessor";
   do {							\
      if (!EINA_MAGIC_CHECK(d, EINA_MAGIC_ARRAY))	\
        EINA_MAGIC_FAIL(d, EINA_MAGIC_ARRAY);		\
-  } while (0);
+  } while (0)
 
 #define EINA_MAGIC_CHECK_ARRAY_ITERATOR(d, ...)			\
   do {								\
@@ -151,7 +151,7 @@ static const char EINA_MAGIC_ARRAY_ACCESSOR_STR[] = "Eina Array Accessor";
           EINA_MAGIC_FAIL(d, EINA_MAGIC_ARRAY_ITERATOR);	\
           return __VA_ARGS__;					\
        }							\
-  } while (0);
+  } while (0)
 
 #define EINA_MAGIC_CHECK_ARRAY_ACCESSOR(d, ...)			\
   do {								\
@@ -160,7 +160,7 @@ static const char EINA_MAGIC_ARRAY_ACCESSOR_STR[] = "Eina Array Accessor";
           EINA_MAGIC_FAIL(d, EINA_MAGIC_ACCESSOR);		\
           return __VA_ARGS__;					\
        }							\
-  } while (0);
+  } while (0)
 
 
 typedef struct _Eina_Iterator_Array Eina_Iterator_Array;
@@ -198,7 +198,7 @@ static void eina_array_iterator_free(Eina_Iterator_Array *it) EINA_ARG_NONNULL(1
 static Eina_Array *eina_array_iterator_get_container(Eina_Iterator_Array *it) EINA_ARG_NONNULL(1);
 static Eina_Bool eina_array_iterator_next(Eina_Iterator_Array *it, void **data) EINA_ARG_NONNULL(1);
 
-static Eina_Bool eina_array_accessor_get_at(Eina_Accessor_Array *it, unsigned int index, void **data) EINA_ARG_NONNULL(1);
+static Eina_Bool eina_array_accessor_get_at(Eina_Accessor_Array *it, unsigned int idx, void **data) EINA_ARG_NONNULL(1);
 static Eina_Array *eina_array_accessor_get_container(Eina_Accessor_Array *it) EINA_ARG_NONNULL(1);
 static void eina_array_accessor_free(Eina_Accessor_Array *it) EINA_ARG_NONNULL(1);
 
@@ -230,14 +230,14 @@ eina_array_iterator_free(Eina_Iterator_Array *it)
 }
 
 static Eina_Bool
-eina_array_accessor_get_at(Eina_Accessor_Array *it, unsigned int index, void **data)
+eina_array_accessor_get_at(Eina_Accessor_Array *it, unsigned int idx, void **data)
 {
    EINA_MAGIC_CHECK_ARRAY_ACCESSOR(it, EINA_FALSE);
 
-   if (!(index < eina_array_count_get(it->array)))
+   if (!(idx < eina_array_count_get(it->array)))
      return EINA_FALSE;
    if (data)
-     *data = eina_array_data_get(it->array, index);
+     *data = eina_array_data_get(it->array, idx);
    return EINA_TRUE;
 }
 
@@ -287,48 +287,6 @@ eina_array_grow(Eina_Array *array)
  *                                 Global                                     *
  *============================================================================*/
 
-/*============================================================================*
- *                                   API                                      *
- *============================================================================*/
-
-/**
- * @addtogroup Eina_Array_Group Array
- *
- * @brief These functions provide array management.
- *
- * The Array data type in Eina is designed to have a very fast access to
- * its data (compared to the Eina @ref Eina_List_Group). On the other hand,
- * data can be added or removed only at the end of the array. To insert
- * data at any place, the Eina @ref Eina_List_Group is the correct container
- * to use.
- *
- * To use the array data type, eina_init() must be called before any
- * other array functions. When eina is no more array function is used,
- * eina_shutdown() must be called to free all the resources.
- *
- * An array must be created with eina_array_new(). It allocated all
- * the necessary data for an array. When not needed anymore, an array
- * is freed with eina_array_free(). This function does not free any
- * allocated memory used to store the data of each element. For that,
- * just iterate over the array to free them. A convenient way to do
- * that is by using #EINA_ARRAY_ITER_NEXT. An example of code is given
- * in the description of this macro.
- *
- * @warning All the other functions do not check if the used array is
- * valid or not. It's up to the user to be sure of that. It is
- * designed like that for performance reasons.
- *
- * The usual features of an array are classic ones: to append an
- * element, use eina_array_push() and to remove the last element, use
- * eina_array_pop(). To retrieve the element at a given positin, use
- * eina_array_data_get(). The number of elements can be retrieved with
- * eina_array_count_get().
- *
- * For more information, you can look at the @ref tutorial_array_page.
- *
- * @{
- */
-
 /**
  * @internal
  * @brief Initialize the array module.
@@ -376,6 +334,48 @@ eina_array_shutdown(void)
    _eina_array_log_dom = -1;
    return EINA_TRUE;
 }
+
+/*============================================================================*
+ *                                   API                                      *
+ *============================================================================*/
+
+/**
+ * @addtogroup Eina_Array_Group Array
+ *
+ * @brief These functions provide array management.
+ *
+ * The Array data type in Eina is designed to have a very fast access to
+ * its data (compared to the Eina @ref Eina_List_Group). On the other hand,
+ * data can be added or removed only at the end of the array. To insert
+ * data at any place, the Eina @ref Eina_List_Group is the correct container
+ * to use.
+ *
+ * To use the array data type, eina_init() must be called before any
+ * other array functions. When eina is no more array function is used,
+ * eina_shutdown() must be called to free all the resources.
+ *
+ * An array must be created with eina_array_new(). It allocated all
+ * the necessary data for an array. When not needed anymore, an array
+ * is freed with eina_array_free(). This function does not free any
+ * allocated memory used to store the data of each element. For that,
+ * just iterate over the array to free them. A convenient way to do
+ * that is by using #EINA_ARRAY_ITER_NEXT. An example of code is given
+ * in the description of this macro.
+ *
+ * @warning All the other functions do not check if the used array is
+ * valid or not. It's up to the user to be sure of that. It is
+ * designed like that for performance reasons.
+ *
+ * The usual features of an array are classic ones: to append an
+ * element, use eina_array_push() and to remove the last element, use
+ * eina_array_pop(). To retrieve the element at a given positin, use
+ * eina_array_data_get(). The number of elements can be retrieved with
+ * eina_array_count_get().
+ *
+ * For more information, you can look at the @ref tutorial_array_page.
+ *
+ * @{
+ */
 
 /**
  * @brief Create a new array.

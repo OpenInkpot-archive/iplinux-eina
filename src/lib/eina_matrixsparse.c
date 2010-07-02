@@ -18,7 +18,7 @@
 
 
 /**
- * @page tutorial_matrixsparse_page Matrix Sparse Tutorial
+ * @page tutorial_matrixsparse_page Sparse Matrix Tutorial
  *
  * to be written...
  *
@@ -51,6 +51,7 @@
 /*============================================================================*
  *                                  Local                                     *
  *============================================================================*/
+
 /**
  * @cond LOCAL
  */
@@ -72,7 +73,7 @@ static const char EINA_MAGIC_MATRIXSPARSE_CELL_ITERATOR_STR[] = "Eina Matrixspar
 	  EINA_MAGIC_FAIL(d, EINA_MAGIC_MATRIXSPARSE);	\
 	  return __VA_ARGS__;				\
        }						\
-  } while(0);
+  } while(0)
 
 #define EINA_MAGIC_CHECK_MATRIXSPARSE_ROW(d, ...)		\
   do {								\
@@ -81,7 +82,7 @@ static const char EINA_MAGIC_MATRIXSPARSE_CELL_ITERATOR_STR[] = "Eina Matrixspar
 	  EINA_MAGIC_FAIL(d, EINA_MAGIC_MATRIXSPARSE_ROW);	\
 	  return __VA_ARGS__;					\
        }							\
-  } while(0);
+  } while(0)
 
 #define EINA_MAGIC_CHECK_MATRIXSPARSE_CELL(d, ...)		\
   do {								\
@@ -90,7 +91,7 @@ static const char EINA_MAGIC_MATRIXSPARSE_CELL_ITERATOR_STR[] = "Eina Matrixspar
 	  EINA_MAGIC_FAIL(d, EINA_MAGIC_MATRIXSPARSE_CELL);	\
 	  return __VA_ARGS__;					\
        }							\
-  } while(0);
+  } while(0)
 
 #define EINA_MAGIC_CHECK_MATRIXSPARSE_ITERATOR(d, ...)			\
   do {									\
@@ -99,7 +100,7 @@ static const char EINA_MAGIC_MATRIXSPARSE_CELL_ITERATOR_STR[] = "Eina Matrixspar
 	  EINA_MAGIC_FAIL(d, EINA_MAGIC_MATRIXSPARSE_ITERATOR);		\
 	  return __VA_ARGS__;						\
        }								\
-  } while(0);
+  } while(0)
 
 struct _Eina_Matrixsparse_Cell
 {
@@ -765,20 +766,6 @@ _eina_matrixsparse_iterator_complete_free(Eina_Matrixsparse_Iterator_Complete *i
  *                                 Global                                     *
  *============================================================================*/
 
-/*============================================================================*
- *                                   API                                      *
- *============================================================================*/
-
-/**
- * @addtogroup Eina_Matrixsparse_Group Matrix Sparse
- *
- * @brief These functions provide matrix sparse management.
- *
- * For more information, you can look at the @ref tutorial_matrixsparse_page.
- *
- * @{
- */
-
 /**
  * @internal
  * @brief Initialize the matrixsparse module.
@@ -871,6 +858,20 @@ eina_matrixsparse_shutdown(void)
    _eina_matrixsparse_log_dom = -1;
    return EINA_TRUE;
 }
+
+/*============================================================================*
+ *                                   API                                      *
+ *============================================================================*/
+
+/**
+ * @addtogroup Eina_Matrixsparse_Group Sparse Matrix
+ *
+ * @brief These functions provide matrix sparse management.
+ *
+ * For more information, you can look at the @ref tutorial_matrixsparse_page.
+ *
+ * @{
+ */
 
 /**
  * @brief Create a new Sparse Matrix.
@@ -1227,7 +1228,7 @@ eina_matrixsparse_cell_data_set(Eina_Matrixsparse_Cell *cell, const void *data)
  * Change cell value without freeing the possibly existing old value, using
  * indexes.
  *
- * @param cell the cell reference, must @b not be @c NULL.
+ * @param m the sparse matrix, must @b not be @c NULL.
  * @param row the row number to set the value.
  * @param col the column number to set the value.
  * @param data new data to set.
@@ -1266,7 +1267,7 @@ eina_matrixsparse_data_idx_replace(Eina_Matrixsparse *m, unsigned long row, unsi
  * In contrast to eina_matrixsparse_data_idx_replace(), this function will
  * call @c free_func() on existing value.
  *
- * @param cell the cell reference, must @b not be @c NULL.
+ * @param m the sparse matrix, must @b not be @c NULL.
  * @param row the row number to set the value.
  * @param col the column number to set the value.
  * @param data new data to set.
@@ -1553,3 +1554,7 @@ eina_matrixsparse_iterator_complete_new(const Eina_Matrixsparse *m)
    it->iterator.free = FUNC_ITERATOR_FREE(_eina_matrixsparse_iterator_complete_free);
    return &it->iterator;
 }
+
+/**
+ * @}
+ */
